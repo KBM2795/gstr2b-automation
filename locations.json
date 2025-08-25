@@ -1,0 +1,24 @@
+{
+  "locations": [
+    {
+      "id": "1756141746251",
+      "path": "GSt.xlsx",
+      "type": "file"
+    },
+    {
+      "id": "1756141746251",
+      "path": "GSt.xlsx",
+      "type": "file"
+    },
+    {
+      "id": "1756141746329",
+      "path": "gst-data",
+      "type": "folder"
+    },
+    {
+      "id": "1756141746348",
+      "path": "gst-data",
+      "type": "folder"
+    }
+  ]
+}
