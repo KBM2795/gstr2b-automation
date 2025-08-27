@@ -3,6 +3,8 @@ const path = require('path')
 const fs = require('fs')
 const ElectronAPI = require('./api-server')
 const N8nServer = require('./n8n-server')
+const { GSTR2BAutomationServer } = require('./gstr2b-automation-server')
+const FirstRunSetup = require('./first-run-setup')
 const isDev = process.env.NODE_ENV === 'development'
 
 // Suppress Chromium warnings and errors
@@ -15,6 +17,8 @@ app.commandLine.appendSwitch('--no-sandbox')
 let mainWindow
 let apiServer
 let n8nServer
+let gstr2bAutomationServer
+let firstRunSetup
 
 // Path for storing app data
 const userDataPath = app.getPath('userData')
@@ -235,8 +239,148 @@ ipcMain.handle('open-external', async (event, url) => {
   return { success: true }
 })
 
+// IPC handlers for setup status
+ipcMain.handle('setup:getStatus', async () => {
+  if (firstRunSetup) {
+    return firstRunSetup.getSetupStatus()
+  }
+  return { setupComplete: false, firstRun: true }
+})
+
+ipcMain.handle('setup:runSetup', async () => {
+  if (firstRunSetup) {
+    return await firstRunSetup.runFirstTimeSetup(mainWindow)
+  }
+  return { success: false, message: 'Setup not initialized' }
+})
+
+// IPC handlers for log file operations
+ipcMain.handle('logs:readFile', async (event, date) => {
+  try {
+    const logDir = path.join(userDataPath, 'logs')
+    const logFile = path.join(logDir, `webhook-responses-${date}.log`)
+    
+    if (!fs.existsSync(logFile)) {
+      return {
+        success: true,
+        logs: [],
+        message: `No logs found for ${date}`,
+        date
+      }
+    }
+
+    const logContent = fs.readFileSync(logFile, 'utf8')
+    const logs = logContent.trim().split('\n').map((line, index) => {
+      try {
+        const parsed = JSON.parse(line)
+        if (!parsed.id) {
+          parsed.id = `${date}-${index}`
+        }
+        return parsed
+      } catch {
+        return { 
+          id: `${date}-${index}`,
+          message: line, 
+          timestamp: new Date().toISOString(),
+          status: 'unknown',
+          'Client Name': 'Unknown'
+        }
+      }
+    })
+
+    return {
+      success: true,
+      logs,
+      count: logs.length,
+      date
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Failed to read log file',
+      message: error.message
+    }
+  }
+})
+
+ipcMain.handle('logs:clearFile', async (event, date, options = {}) => {
+  try {
+    const logDir = path.join(userDataPath, 'logs')
+    const logFile = path.join(logDir, `webhook-responses-${date}.log`)
+    
+    if (!fs.existsSync(logFile)) {
+      return {
+        success: false,
+        error: 'Log file not found',
+        message: `No log file found for ${date}`
+      }
+    }
+
+    if (options.all) {
+      // Clear all logs
+      fs.unlinkSync(logFile)
+      return {
+        success: true,
+        message: `All logs cleared for ${date}`,
+        date,
+        cleared: 'all'
+      }
+    }
+
+    if (options.ids && Array.isArray(options.ids)) {
+      // Clear specific logs
+      const logContent = fs.readFileSync(logFile, 'utf8')
+      const logs = logContent.trim().split('\n')
+      
+      const filteredLogs = logs.filter((line, index) => {
+        try {
+          const parsed = JSON.parse(line)
+          const logId = parsed.id || `${date}-${index}`
+          return !options.ids.includes(logId)
+        } catch {
+          const logId = `${date}-${index}`
+          return !options.ids.includes(logId)
+        }
+      })
+
+      if (filteredLogs.length === 0) {
+        fs.unlinkSync(logFile)
+      } else {
+        fs.writeFileSync(logFile, filteredLogs.join('\n') + '\n')
+      }
+
+      return {
+        success: true,
+        message: `Deleted ${logs.length - filteredLogs.length} specific logs`,
+        date,
+        cleared: options.ids,
+        remaining: filteredLogs.length
+      }
+    }
+
+    return {
+      success: false,
+      error: 'Invalid clear options',
+      message: 'Please specify either all=true or provide specific log ids'
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Failed to clear logs',
+      message: error.message
+    }
+  }
+})
+
 app.whenReady().then(async () => {
   initConfig()
+  
+  // Initialize first-run setup
+  firstRunSetup = new FirstRunSetup()
+  
+  // Check if this is first run and setup is needed
+  const setupStatus = firstRunSetup.getSetupStatus()
+  console.log('Setup status:', setupStatus)
   
   // Start internal API server
   try {
@@ -245,6 +389,53 @@ app.whenReady().then(async () => {
     console.log('Internal API server started on port 3002')
   } catch (error) {
     console.error('Failed to start API server:', error)
+  }
+
+  // Create window first
+  createWindow()
+  
+  // Run first-time setup if needed
+  if (!setupStatus.setupComplete) {
+    console.log('Running first-time setup...')
+    const setupResult = await firstRunSetup.runFirstTimeSetup(mainWindow)
+    
+    if (setupResult.success) {
+      console.log('First-time setup completed successfully')
+      // Hide progress dialog
+      firstRunSetup.hideProgressDialog(mainWindow)
+      
+      // Show completion message
+      setTimeout(() => {
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Setup Complete',
+          message: 'GSTR2B App Setup Complete!',
+          detail: 'All required components have been installed successfully. The app is now ready to use.',
+          buttons: ['OK']
+        })
+      }, 1000)
+    } else {
+      console.error('First-time setup failed:', setupResult.message)
+      // Hide progress dialog
+      firstRunSetup.hideProgressDialog(mainWindow)
+      
+      // Show error message
+      setTimeout(() => {
+        dialog.showErrorBox(
+          'Setup Failed', 
+          `Setup failed: ${setupResult.message}\n\nThe app may not work correctly. Please restart the app to try again.`
+        )
+      }, 1000)
+    }
+  }
+
+  // Start GSTR-2B automation server (after setup is complete)
+  try {
+    gstr2bAutomationServer = new GSTR2BAutomationServer()
+    await gstr2bAutomationServer.start()
+    console.log('GSTR-2B automation server started on port 3003')
+  } catch (error) {
+    console.error('Failed to start GSTR-2B automation server:', error)
   }
 
   // Start n8n server (temporarily disabled for testing)
@@ -263,8 +454,6 @@ app.whenReady().then(async () => {
     n8nServer = null
   }
   */
-  
-  createWindow()
 })
 
 app.on('window-all-closed', async () => {
@@ -276,6 +465,15 @@ app.on('window-all-closed', async () => {
       console.log('API server stopped successfully')
     } catch (error) {
       console.error('Failed to stop API server:', error)
+    }
+  }
+  
+  if (gstr2bAutomationServer) {
+    try {
+      await gstr2bAutomationServer.stop()
+      console.log('GSTR-2B automation server stopped successfully')
+    } catch (error) {
+      console.error('Failed to stop GSTR-2B automation server:', error)
     }
   }
   
@@ -295,6 +493,17 @@ app.on('window-all-closed', async () => {
 
 app.on('before-quit', async (event) => {
   console.log('App is quitting, stopping all servers...')
+  
+  if (gstr2bAutomationServer && gstr2bAutomationServer.isRunning()) {
+    event.preventDefault()
+    
+    try {
+      await gstr2bAutomationServer.stop()
+      console.log('GSTR-2B automation server stopped on quit')
+    } catch (error) {
+      console.error('Failed to stop GSTR-2B automation on quit:', error)
+    }
+  }
   
   if (n8nServer && n8nServer.isRunning) {
     event.preventDefault()

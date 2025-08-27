@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const CredentialManager = require('./credential-manager')
 
 class WorkflowInstaller {
   constructor(n8nDataPath, resourcesPath) {
@@ -7,6 +8,9 @@ class WorkflowInstaller {
     this.templatesPath = path.join(resourcesPath, 'n8n-templates')
     this.workflowsPath = path.join(n8nDataPath, 'workflows')
     this.installedMarker = path.join(n8nDataPath, '.workflows-installed')
+    
+    // Initialize credential manager
+    this.credentialManager = new CredentialManager(n8nDataPath)
   }
 
   async installDefaultWorkflows() {
@@ -64,27 +68,10 @@ class WorkflowInstaller {
 
   async setupDefaultCredentials() {
     try {
-      const credentialsPath = path.join(this.n8nDataPath, 'credentials')
-      
-      if (!fs.existsSync(credentialsPath)) {
-        fs.mkdirSync(credentialsPath, { recursive: true })
-      }
-
-      // Create default credentials file for GSTR2B automation
-      const defaultCreds = {
-        name: 'GSTR2B Automation',
-        type: 'httpHeaderAuth',
-        data: {
-          name: 'Authorization',
-          value: 'Bearer gstr2b-automation-token'
-        }
-      }
-
-      const credsFile = path.join(credentialsPath, 'gstr2b-default.json')
-      if (!fs.existsSync(credsFile)) {
-        fs.writeFileSync(credsFile, JSON.stringify(defaultCreds, null, 2))
-        console.log('Default credentials created')
-      }
+      // Use the comprehensive credential manager
+      await this.credentialManager.setupDefaultCredentials()
+      this.credentialManager.createCredentialGuide()
+      console.log('Advanced credential setup completed')
     } catch (error) {
       console.error('Failed to setup default credentials:', error)
     }

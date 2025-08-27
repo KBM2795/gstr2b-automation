@@ -32,4 +32,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  
+  // Setup methods
+  getSetupStatus: () => ipcRenderer.invoke('setup:getStatus'),
+  runSetup: () => ipcRenderer.invoke('setup:runSetup'),
+  
+  // Logs methods
+  readLogFile: (date) => ipcRenderer.invoke('logs:readFile', date),
+  clearLogFile: (date, options) => ipcRenderer.invoke('logs:clearFile', date, options),
 })
