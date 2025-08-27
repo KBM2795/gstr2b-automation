@@ -145,7 +145,7 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* GST Credentials */}
-          <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+          <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
             <h3 className="font-medium text-sm">GST Portal Credentials</h3>
             
             <div className="space-y-2">
@@ -266,7 +266,7 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
               placeholder="Enter client folder name (e.g., ClientABC)"
               required
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Files will be organized as: {config.storagePath ? `${config.storagePath}/` : ''}{formData.year || 'YYYY'}/{formData.quarter || 'QX'}/{formData.month || 'Month'}/{formData.client_folder || 'ClientName'}/
             </p>
           </div>
@@ -285,7 +285,7 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
 
           {/* Result Display */}
           {result && (
-            <div className={`p-4 rounded-lg border ${result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <div className={`p-4 rounded-lg border ${result.success ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
               <div className="flex items-start gap-2">
                 {result.success ? (
                   <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
@@ -297,14 +297,14 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
                     {result.message}
                   </p>
                   {result.data?.filePath && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       File saved: {result.data.filePath}
                     </p>
                   )}
                   {result.data?.folderStructure && (
-                    <div className="text-sm text-gray-600 mt-2">
+                    <div className="text-sm text-muted-foreground mt-2">
                       <p className="font-medium">Organized Structure:</p>
-                      <p className="font-mono text-xs bg-gray-100 p-2 rounded mt-1">
+                      <p className="font-mono text-xs bg-muted p-2 rounded mt-1">
                         📁 {result.data.folderStructure.year}<br/>
                         └── 📁 {result.data.folderStructure.quarter}<br/>
                         &nbsp;&nbsp;&nbsp;&nbsp;└── 📁 {result.data.folderStructure.month}<br/>
@@ -319,12 +319,12 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
                     </p>
                   )}
                   {result.data?.durationMs && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Completed in {Math.round(result.data.durationMs / 1000)}s
                     </p>
                   )}
                   {result.data?.errorCode && (
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Error Code: {result.data.errorCode}
                     </p>
                   )}

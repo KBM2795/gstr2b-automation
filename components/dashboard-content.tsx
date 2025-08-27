@@ -156,12 +156,12 @@ export function DashboardContent({ config }: DashboardContentProps) {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+      <div className="flex space-x-1 bg-muted p-1 rounded-lg">
         <button
           onClick={() => setActiveTab("process")}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === "process"
-              ? "bg-white text-primary shadow-sm"
+              ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -172,7 +172,7 @@ export function DashboardContent({ config }: DashboardContentProps) {
           onClick={() => setActiveTab("download")}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === "download"
-              ? "bg-white text-primary shadow-sm"
+              ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

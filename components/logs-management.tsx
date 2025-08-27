@@ -471,14 +471,14 @@ export function LogsManagement() {
         {/* Fallback message when API is not available */}
         {!isLoading && logs.length === 0 && !message && (
           <div className="text-center py-12">
-            <div className="text-gray-500 mb-4">
-              <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <div className="text-muted-foreground mb-4">
+              <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Webhook Logs</h3>
-            <p className="text-gray-500 mb-4">
+            <h3 className="text-lg font-medium text-foreground mb-2">No Webhook Logs</h3>
+            <p className="text-muted-foreground mb-4">
               No webhook logs found for {selectedDate}.
             </p>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Logs are automatically created when you process Excel files with webhooks.
             </p>
           </div>
@@ -512,7 +512,7 @@ export function LogsManagement() {
               </TableHeader>
               <TableBody>
                 {logs.map((log) => (
-                  <TableRow key={log.id} className={selectedLogs.has(log.id) ? 'bg-blue-50' : ''}>
+                  <TableRow key={log.id} className={selectedLogs.has(log.id) ? 'bg-primary/10 dark:bg-primary/20' : ''}>
                     <TableCell>
                       <Button
                         variant="ghost"
@@ -521,7 +521,7 @@ export function LogsManagement() {
                         className="p-0 h-6 w-6"
                       >
                         {selectedLogs.has(log.id) ? (
-                          <CheckSquare className="h-4 w-4 text-blue-600" />
+                          <CheckSquare className="h-4 w-4 text-primary" />
                         ) : (
                           <Square className="h-4 w-4" />
                         )}
@@ -538,7 +538,7 @@ export function LogsManagement() {
                     <TableCell className="max-w-xs truncate" title={log.message}>
                       {log.message}
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">
+                    <TableCell className="text-sm text-muted-foreground">
                       {new Date(log.timestamp).toLocaleString()}
                     </TableCell>
                   </TableRow>

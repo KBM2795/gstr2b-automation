@@ -99,19 +99,6 @@ export function N8nIntegration() {
 n8n will be available at http://localhost:5678`)
   }
 
-  const createWorkflow = async () => {
-    try {
-      if (typeof window !== 'undefined' && (window as any).electronAPI) {
-        const workflow = await (window as any).electronAPI.createN8nWorkflow()
-        console.log('Created workflow:', workflow)
-        alert('GSTR2B workflow template created! Check the n8n editor.')
-      }
-    } catch (error) {
-      console.error('Failed to create workflow:', error)
-      alert('Failed to create workflow. Please check the console.')
-    }
-  }
-
   if (isLoading) {
     return (
       <Card>
@@ -158,7 +145,7 @@ n8n will be available at http://localhost:5678`)
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Button
                 onClick={openN8nEditor}
                 variant="outline"
@@ -166,14 +153,6 @@ n8n will be available at http://localhost:5678`)
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Open n8n Editor
-              </Button>
-              
-              <Button
-                onClick={createWorkflow}
-                className="w-full"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Create GSTR2B Workflow
               </Button>
 
               <Button

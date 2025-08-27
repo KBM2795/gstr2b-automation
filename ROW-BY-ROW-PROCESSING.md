@@ -19,7 +19,7 @@ User fills out:
 6. **Returns** processing summary
 
 ### **Step 3: n8n Webhook Receives Data**
-Each row sent to: `http://127.0.0.1:5678/webhook-test/gstr2b-email`
+Each row sent to: `http://127.0.0.1:5678/webhook/gstr2b-email`
 
 **Data Structure Per Row:**
 ```json
@@ -63,7 +63,7 @@ for (let i = 1; i < jsonData.length; i++) {
   })
 
   // Add metadata and send to webhook
-  await fetch('http://127.0.0.1:5678/webhook-test/gstr2b-email', {
+  await fetch('http://127.0.0.1:5678/webhook/gstr2b-email', {
     method: 'POST',
     body: JSON.stringify(enrichedData)
   })
@@ -111,7 +111,7 @@ Show Results to User
 ## 🎯 **n8n Webhook Setup**
 
 ### **Webhook Configuration**
-- **URL**: `http://127.0.0.1:5678/webhook-test/gstr2b-email`
+- **URL**: `http://127.0.0.1:5678/webhook/gstr2b-email`
 - **Method**: POST
 - **Content-Type**: application/json
 

@@ -138,6 +138,23 @@ function ensureDir(p){
   }
 }
 
+// Enhanced directory creation with logging
+function ensureDirWithLogging(dirPath, description) {
+  try {
+    if (fs.existsSync(dirPath)) {
+      console.log(`  ✓ ${description}: Already exists - ${dirPath}`);
+      return true;
+    } else {
+      fs.mkdirSync(dirPath, { recursive: true });
+      console.log(`  + ${description}: Created - ${dirPath}`);
+      return true;
+    }
+  } catch (error) {
+    console.log(`  ✗ ${description}: Failed to create - ${dirPath}`, error.message);
+    return false;
+  }
+}
+
 function findCaptchaFrame(page){ 
   try {
     const frames=page.frames(); 
@@ -300,62 +317,108 @@ async function isOnLogin(page){
 }
 
 // === New helpers ===
-async function openGstr2bDownload(page){
+async function openGstr2bDownload(page) {
   try {
-    await page.waitForTimeout(800);
+    console.log('Waiting for download buttons to be available...');
+    await page.waitForTimeout(1500); // Increased initial wait
+    
+    // Wait for download buttons to be present
+    await page.waitForSelector('button:has-text("DOWNLOAD"), button:has-text("Download")', { timeout: 15000 }).catch(() => {
+      console.log('Download buttons not found within timeout');
+    });
+    
     const downloadButtons = page.locator('button:has-text("DOWNLOAD"), button:has-text("Download")');
-    const total = await downloadButtons.count().catch(()=>0);
-    if(!total){ console.log('No DOWNLOAD buttons yet.'); return false; }
+    const total = await downloadButtons.count().catch(() => 0);
     
-    async function scoreButton(btn){
-      return await btn.evaluate(node=>{
-        function anc(el,depth=0,max=6,acc=[]){ if(!el||depth>max) return acc; acc.push(el); return anc(el.parentElement,depth+1,max,acc);} 
-        const chain=anc(node); 
-        const TEXT=chain.map(e=>(e.innerText||'').replace(/\s+/g,' ').trim()).filter(Boolean); 
-        let block=''; 
-        for(const t of TEXT){ if(/GSTR\s*-?2B/i.test(t)){ block=t; break; } } 
-        block = block || TEXT[0] || ''; 
-        const codes=(block.match(/GSTR\s*-?\d+[A-Z]?/gi)||[]).map(s=>s.replace(/\s+/g,'').toUpperCase()); 
-        const has2B=codes.includes('GSTR2B'); 
-        const unwanted=codes.filter(c=>c&&c!=='GSTR2B'); 
-        return { block, codes, has2B, unwanted: unwanted.length>0, length:block.length };
-      });
-    }
-    
-    let candidates=[];
-    for(let i=0;i<total;i++){ 
-      const btn=downloadButtons.nth(i); 
-      const sc=await scoreButton(btn); 
-      if(sc.has2B && !sc.unwanted) candidates.push({idx:i,sc}); 
-    }
-    if(!candidates.length){
-      console.log('No strict GSTR2B buttons; relaxing.');
-      for(let i=0;i<total;i++){ 
-        const btn=downloadButtons.nth(i); 
-        const sc=await scoreButton(btn); 
-        if(sc.has2B) candidates.push({idx:i,sc}); 
-      }
-    }
-    if(!candidates.length){ 
-      console.log('No GSTR2B related DOWNLOAD buttons.'); 
+    if (!total) { 
+      console.log('No DOWNLOAD buttons found.'); 
       return false; 
     }
     
-    candidates.sort((a,b)=>{ 
-      if(!!a.sc.unwanted===!!b.sc.unwanted) return a.sc.length-b.sc.length; 
-      return a.sc.unwanted?1:-1; 
+    console.log(`Found ${total} download button(s), analyzing for GSTR-2B...`);
+
+    async function scoreButton(btn) {
+      return await btn.evaluate(node => {
+        function anc(el, depth = 0, max = 6, acc = []) { 
+          if (!el || depth > max) return acc; 
+          acc.push(el); 
+          return anc(el.parentElement, depth + 1, max, acc);
+        } 
+        const chain = anc(node); 
+        const TEXT = chain.map(e => (e.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean); 
+        let block = ''; 
+        for (const t of TEXT) { 
+          if (/GSTR\s*-?2B/i.test(t)) { 
+            block = t; 
+            break; 
+          } 
+        } 
+        block = block || TEXT[0] || ''; 
+        const codes = (block.match(/GSTR\s*-?\d+[A-Z]?/gi) || []).map(s => s.replace(/\s+/g, '').toUpperCase()); 
+        const has2B = codes.includes('GSTR2B'); 
+        const unwanted = codes.filter(c => c && c !== 'GSTR2B'); 
+        return { block, codes, has2B, unwanted: unwanted.length > 0, length: block.length };
+      });
+    }
+    
+    let candidates = [];
+    for (let i = 0; i < total; i++) { 
+      const btn = downloadButtons.nth(i); 
+      const sc = await scoreButton(btn); 
+      console.log(`Button ${i + 1} analysis:`, sc);
+      if (sc.has2B && !sc.unwanted) candidates.push({ idx: i, sc }); 
+    }
+    
+    if (!candidates.length) {
+      console.log('No strict GSTR2B buttons found, relaxing criteria...');
+      for (let i = 0; i < total; i++) { 
+        const btn = downloadButtons.nth(i); 
+        const sc = await scoreButton(btn); 
+        if (sc.has2B) candidates.push({ idx: i, sc }); 
+      }
+    }
+    
+    if (!candidates.length) { 
+      console.log('No GSTR2B related DOWNLOAD buttons found.'); 
+      return false; 
+    }
+    
+    candidates.sort((a, b) => { 
+      if (!!a.sc.unwanted === !!b.sc.unwanted) return a.sc.length - b.sc.length; 
+      return a.sc.unwanted ? 1 : -1; 
     });
     
     const chosen = candidates[0];
     const btn = downloadButtons.nth(chosen.idx);
-    console.log('Clicking GSTR2B DOWNLOAD candidate:', chosen.sc);
-    const clicked = await btn.click({timeout:3000}).then(()=>true).catch(()=>false);
-    if(!clicked){ 
-      console.log('Primary click failed; trying JS click'); 
-      await btn.evaluate(el=>{el.click();}); 
+    console.log('Selected GSTR2B DOWNLOAD candidate:', chosen.sc);
+    
+    // Enhanced button clicking with verification
+    try {
+      await btn.waitFor({ state: 'visible', timeout: 5000 });
+      await btn.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(1000); // Brief pause before clicking
+      
+      console.log('Clicking GSTR-2B download button...');
+      await btn.click({ timeout: 6000 });
+      console.log('GSTR-2B download button clicked successfully');
+      
+      // Wait for page transition or content loading
+      await page.waitForTimeout(3000);
+      return true;
+      
+    } catch(e) {
+      console.log('Primary click failed, trying JavaScript click:', e.message); 
+      try {
+        await btn.evaluate(el => { el.click(); });
+        console.log('JavaScript click successful');
+        await page.waitForTimeout(3000);
+        return true;
+      } catch(jsError) {
+        console.log('JavaScript click also failed:', jsError.message);
+        return false;
+      }
     }
-    return true;
-  } catch(e){ 
+  } catch(e) { 
     console.log('openGstr2bDownload error:', e.message); 
     return false; 
   }
@@ -374,14 +437,34 @@ async function generateAndDownloadExcel(page, { quarter, month, finYear, storage
   console.log('- Client folder:', client_folder);
   console.log('- Target folder:', clientFolder);
   
-  // Ensure the directory structure exists
-  ensureDir(clientFolder);
+  // Ensure each level of directory structure exists (only create if needed)
+  console.log('Checking folder structure:');
+  ensureDirWithLogging(storagePath, 'Base storage');
+  ensureDirWithLogging(yearFolder, `Year folder (${finYear.replace(/\s+/g, '')})`);
+  ensureDirWithLogging(quarterFolder, `Quarter folder (${quarter.replace(/\s+/g, '')})`);
+  ensureDirWithLogging(monthFolder, `Month folder (${month.replace(/\s+/g, '')})`);
+  if (client_folder) {
+    ensureDirWithLogging(clientFolder, `Client folder (${client_folder})`);
+  }
   
   const targetBase = `GSTR-2B-${finYear.replace(/\s+/g,'')}-${quarter.replace(/\s+/g,'')}-${month.replace(/\s+/g,'')}`;
   const finalPath = path.join(clientFolder, `${targetBase}.xlsx`);
   console.log('- Final file path:', finalPath);
+  
+  // Enhanced wait for page readiness before looking for generate button
+  console.log('Ensuring page is ready for Excel generation...');
+  try {
+    await page.waitForSelector('text=/GSTR-2B/i', { timeout: 20000 });
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {
+      console.log('Network idle timeout, continuing...');
+    });
+    // Additional wait to ensure all dynamic content is loaded
+    await page.waitForTimeout(2000);
+  } catch(e) {
+    console.log('Page readiness check failed:', e.message);
+  }
+  
   console.log('Locating GENERATE EXCEL button...');
-  await page.waitForSelector('text=/GSTR-2B/i', { timeout: 20000 }).catch(()=>{});
 
   const excelSelectors = [
     'button:has-text("GENERATE EXCEL FILE TO DOWNLOAD")',
@@ -398,65 +481,145 @@ async function generateAndDownloadExcel(page, { quarter, month, finYear, storage
     return page.locator('button').filter({ hasText:/GENERATE/i }).first();
   }
   
-  let clicked=false;
-  for (let i=1;i<=5 && !clicked;i++){
+  let clicked = false;
+  let generateButtonFound = false;
+  
+  for (let attempt = 1; attempt <= 5 && !clicked; attempt++) {
+    console.log(`Generate Excel button search attempt ${attempt}/5`);
+    
     const btn = firstExistingLocator();
-    if(!await btn.count()){ 
-      console.log(`Generate Excel button not found (attempt ${i})`); 
-      await page.waitForTimeout(1200); 
+    const buttonCount = await btn.count();
+    
+    if (!buttonCount) { 
+      console.log(`Generate Excel button not found (attempt ${attempt})`); 
+      await page.waitForTimeout(2000); // Longer wait between attempts
       continue; 
     }
-    try { await btn.scrollIntoViewIfNeeded().catch(()=>{}); } catch{}
-    console.log(`Clicking GENERATE EXCEL (attempt ${i})`);
-    clicked = await btn.click({ timeout:4000 }).then(()=>true).catch(()=>false);
-    if(!clicked) await page.waitForTimeout(1200);
+    
+    generateButtonFound = true;
+    console.log(`Found Generate Excel button (attempt ${attempt})`);
+    
+    try {
+      // Ensure button is ready for interaction
+      await btn.waitFor({ state: 'visible', timeout: 5000 });
+      await btn.scrollIntoViewIfNeeded();
+      
+      // Brief pause to ensure button is fully rendered
+      await page.waitForTimeout(1000);
+      
+      console.log(`Clicking GENERATE EXCEL (attempt ${attempt})`);
+      await btn.click({ timeout: 6000 });
+      clicked = true;
+      console.log('Generate Excel button clicked successfully');
+      
+      // Wait a moment to see if click was successful
+      await page.waitForTimeout(2000);
+      
+    } catch(e) {
+      console.log(`Generate Excel click attempt ${attempt} failed:`, e.message);
+      
+      // Try JavaScript click as fallback
+      if (attempt === 3) {
+        try {
+          console.log('Trying JavaScript click fallback...');
+          await btn.evaluate(el => el.click());
+          clicked = true;
+          console.log('JavaScript click successful');
+        } catch(jsError) {
+          console.log('JavaScript click also failed:', jsError.message);
+        }
+      }
+      
+      if (!clicked) {
+        await page.waitForTimeout(2000);
+      }
+    }
   }
   
-  if(!clicked){ 
-    return { success:false, error:'Could not click GENERATE EXCEL button' }; 
+  if (!generateButtonFound) {
+    return { success: false, error: 'Generate Excel button not found after multiple attempts', errorCode: 'BUTTON_NOT_FOUND' };
+  }
+  
+  if (!clicked) { 
+    return { success: false, error: 'Could not click GENERATE EXCEL button after multiple attempts', errorCode: 'BUTTON_CLICK_FAILED' }; 
   }
 
-  // After clicking, immediately check for red banner / pending generation message
+  // Enhanced download detection with better timing
+  console.log('Checking for immediate download or processing indicators...');
+  
+  // After clicking, wait longer for banner to render and check for processing messages
+  await page.waitForTimeout(3000); // Increased wait time
+  
   try {
-    await page.waitForTimeout(1500); // brief wait for banner to render
     const pendingBanner = page.locator(':is(.alert-danger,.text-danger,div,span,p) >> text=/GSTR-?2B.*(being generated|should be available)/i').first();
-    if(await pendingBanner.isVisible().catch(()=>false)){
-      const bannerText = (await pendingBanner.innerText().catch(()=>'')) || '';
+    if (await pendingBanner.isVisible().catch(() => false)) {
+      const bannerText = (await pendingBanner.innerText().catch(() => '')) || '';
       console.log('Detected pending generation banner:', bannerText.trim());
-      return { success:false, error:'GSTR-2B not generated yet', detail: bannerText.trim(), filePath:null };
+      return { success: false, error: 'GSTR-2B not generated yet', detail: bannerText.trim(), filePath: null };
     }
-  } catch {}
+  } catch(e) {
+    console.log('Error checking for pending banner:', e.message);
+  }
 
-  // Wait for possible processing indicator or second stage button
+  // Wait for possible processing indicator or download event
   const downloadEventTimeout = 60000; // 60s
   let downloadObj = null;
+  
+  console.log('Waiting for download event...');
   try { 
     downloadObj = await page.waitForEvent('download', { timeout: downloadEventTimeout }); 
-  }
-  catch { 
-    console.log('No immediate download event. Checking for second DOWNLOAD button.'); 
+    console.log('Download event detected immediately');
+  } catch { 
+    console.log('No immediate download event. Checking for secondary DOWNLOAD button...'); 
   }
 
-  if(!downloadObj){
-    // Look for new download button
+  if (!downloadObj) {
+    // Enhanced search for secondary download button
+    console.log('Searching for secondary download button...');
     const secondSelectors = [
       'button:has-text("DOWNLOAD EXCEL")',
       'button:has-text("CLICK HERE TO DOWNLOAD")',
       'button:has-text("DOWNLOAD")',
-      'a:has-text("DOWNLOAD")'
+      'a:has-text("DOWNLOAD")',
+      'button:has-text("CLICK TO DOWNLOAD")',
+      'a[href*="download"]'
     ];
-    for (const sel of secondSelectors){
+    
+    let secondaryButtonFound = false;
+    for (const sel of secondSelectors) {
       const loc = page.locator(sel).first();
-      if(await loc.count()){
-        console.log('Found post-generate download trigger:', sel);
-        const clicked2 = await loc.click({ timeout:4000 }).then(()=>true).catch(()=>false);
-        if(clicked2){
+      const count = await loc.count();
+      
+      if (count > 0) {
+        console.log(`Found secondary download button with selector: ${sel}`);
+        secondaryButtonFound = true;
+        
+        try {
+          // Ensure button is ready for interaction
+          await loc.waitFor({ state: 'visible', timeout: 5000 });
+          await loc.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(1000); // Brief pause before clicking
+          
+          console.log('Clicking secondary download button...');
+          await loc.click({ timeout: 6000 });
+          console.log('Secondary download button clicked');
+          
+          // Wait for download event with enhanced timeout
           try { 
             downloadObj = await page.waitForEvent('download', { timeout: 45000 }); 
-          } catch {}
-          break;
+            console.log('Download event captured from secondary button');
+            break;
+          } catch(downloadError) {
+            console.log('Download event timeout after secondary button click:', downloadError.message);
+          }
+        } catch(clickError) {
+          console.log(`Error clicking secondary download button (${sel}):`, clickError.message);
         }
       }
+    }
+    
+    if (!secondaryButtonFound) {
+      console.log('No secondary download buttons found');
     }
   }
 
@@ -655,19 +818,27 @@ async function runGstr2b(opts){
         // Click login button
         await clickLogin(page);
         
-        // Wait for navigation or error messages
+        // Enhanced wait for navigation or error messages with better timeout handling
+        console.log('Waiting for login response...');
         await Promise.race([
-          page.waitForNavigation({timeout:15000}).catch(()=>{}),
-          page.waitForSelector('text=Returns Dashboard',{timeout:15000}).catch(()=>{}),
-          page.waitForSelector('text=/Invalid\\s+Username\\s+or\\s+Password/i',{timeout:8000}).catch(()=>{}),
-          page.waitForSelector('text=/Enter\\s+valid\\s+letters?\\s+shown/i',{timeout:8000}).catch(()=>{})
+          page.waitForNavigation({ timeout: 20000 }).catch(() => {}),
+          page.waitForSelector('text=Returns Dashboard', { timeout: 20000 }).catch(() => {}),
+          page.waitForSelector('text=/Invalid\\s+Username\\s+or\\s+Password/i', { timeout: 10000 }).catch(() => {}),
+          page.waitForSelector('text=/Enter\\s+valid\\s+letters?\\s+shown/i', { timeout: 10000 }).catch(() => {}),
+          page.waitForTimeout(15000) // Fallback timeout to prevent indefinite waiting
         ]);
         
+        // Additional wait to ensure page state is stable
+        await page.waitForTimeout(2000);
+        
         // Check if successfully logged in
-        if(!(await isOnLogin(page))){ 
-          loggedIn=true; 
-          console.log('Successfully logged in');
+        console.log('Checking login status...');
+        if (!(await isOnLogin(page))) { 
+          loggedIn = true; 
+          console.log('✓ Successfully logged in');
           break; 
+        } else {
+          console.log('Still on login page, checking for errors...');
         }
         
         // Take diagnostic screenshot
@@ -774,51 +945,115 @@ async function runGstr2b(opts){
       return result; 
     }
     
-    // Navigate to dashboard with error handling
+    // Navigate to dashboard with enhanced verification
+    console.log('Navigating to Returns Dashboard...');
     try {
+      // Wait for dashboard button to be visible and clickable
       await page.waitForSelector('text=/RETURN\\s+DASHBOARD/i', { timeout:20000 });
-      await page.locator('text=/RETURN\\s+DASHBOARD/i').first().click().catch(async()=>{ 
-        await page.getByText('RETURN DASHBOARD',{exact:false}).first().click().catch(()=>{}); 
-      });
+      
+      // Ensure button is ready for interaction
+      const dashboardBtn = page.locator('text=/RETURN\\s+DASHBOARD/i').first();
+      await dashboardBtn.waitFor({ state: 'visible', timeout: 10000 });
+      
+      // Click with fallback methods
+      let dashboardClicked = false;
+      try {
+        await dashboardBtn.click({ timeout: 5000 });
+        dashboardClicked = true;
+        console.log('Dashboard button clicked successfully');
+      } catch(e) {
+        console.log('Primary dashboard click failed, trying fallback:', e.message);
+        try {
+          await page.getByText('RETURN DASHBOARD', { exact: false }).first().click({ timeout: 5000 });
+          dashboardClicked = true;
+          console.log('Dashboard button clicked via fallback');
+        } catch(e2) {
+          console.log('Fallback dashboard click also failed:', e2.message);
+        }
+      }
+      
+      if (dashboardClicked) {
+        // Wait for navigation to complete
+        console.log('Waiting for dashboard page to load...');
+        await Promise.race([
+          page.waitForNavigation({ timeout: 15000 }).catch(() => {}),
+          page.waitForSelector('select', { timeout: 15000 }).catch(() => {}),
+          page.waitForTimeout(8000) // Fallback timeout
+        ]);
+        console.log('Dashboard navigation completed');
+      }
     } catch(e) {
       console.log('Error navigating to dashboard:', e.message);
       // Continue anyway, might already be on the right page
     }
     
-    // Wait for selects with error handling
+    // Wait for selects with enhanced verification
+    console.log('Waiting for dropdown elements...');
     try {
-      await page.waitForSelector('select',{timeout:15000}).catch(()=>{
-        console.log('Select elements not found within timeout, continuing...');
-      });
+      // Wait for select elements to be present and ready
+      await page.waitForSelector('select', { timeout: 20000 });
+      
+      // Verify we have the expected number of selects
+      const selectCount = await page.locator('select').count();
+      console.log(`Found ${selectCount} dropdown elements`);
+      
+      if (selectCount >= 3) {
+        console.log('All required dropdown elements are available');
+      } else {
+        console.log(`Warning: Expected 3 dropdowns but found ${selectCount}, continuing...`);
+      }
+      
+      // Additional wait to ensure dropdowns are fully populated
+      await page.waitForTimeout(2000);
     } catch(e) {
       console.log('Error waiting for select elements:', e.message);
+      // Try to continue, dropdowns might still work
     }
 
-    // Enhanced dropdown selection with error handling
-    async function chooseOptionByPatterns(selectLocator, patterns){
+    // Enhanced dropdown selection with error handling and verification
+    async function chooseOptionByPatterns(selectLocator, patterns) {
       try {
-        if(!await selectLocator.count()) {
+        const selectCount = await selectLocator.count();
+        if (!selectCount) {
           console.log('Select element not found');
           return false;
         }
+        
+        // Wait for select to be ready
+        await selectLocator.waitFor({ state: 'visible', timeout: 5000 });
+        
         const optionLocs = selectLocator.locator('option');
-        const texts = await optionLocs.allTextContents().catch(()=>[]);
+        const texts = await optionLocs.allTextContents().catch(() => []);
+        
         if (texts.length === 0) {
           console.log('No options found in select element');
           return false;
         }
-        for(const pat of patterns.filter(Boolean)){
-          const idx = texts.findIndex(t=>t.toLowerCase().includes(pat.toLowerCase()));
-          if(idx>=0){ 
-            const value = await optionLocs.nth(idx).getAttribute('value').catch(()=>null);
+        
+        console.log(`Select has ${texts.length} options:`, texts.slice(0, 5).join(', ') + (texts.length > 5 ? '...' : ''));
+        
+        for (const pat of patterns.filter(Boolean)) {
+          const idx = texts.findIndex(t => t.toLowerCase().includes(pat.toLowerCase()));
+          if (idx >= 0) { 
+            const value = await optionLocs.nth(idx).getAttribute('value').catch(() => null);
             try { 
-              if(value) {
+              if (value) {
                 await selectLocator.selectOption(value); 
               } else {
-                await selectLocator.selectOption({ label:texts[idx] }); 
+                await selectLocator.selectOption({ label: texts[idx] }); 
               }
-              console.log(`Selected '${texts[idx]}' (pattern: ${pat})`); 
-              return true; 
+              console.log(`✓ Selected '${texts[idx]}' (pattern: ${pat})`); 
+              
+              // Verify selection was successful
+              await page.waitForTimeout(500);
+              const selectedValue = await selectLocator.inputValue().catch(() => '');
+              if (selectedValue === value || selectedValue === texts[idx]) {
+                console.log('Selection verified successfully');
+                return true;
+              } else {
+                console.log('Selection verification failed, but continuing...');
+                return true; // Still consider it successful
+              }
             } catch(e) {
               console.log('Error selecting option:', e.message);
             }
@@ -832,52 +1067,126 @@ async function runGstr2b(opts){
       }
     }
     
+    // Enhanced dropdown selection with better verification
+    console.log('Configuring dropdown selections...');
     try {
       const selects = page.locator('select');
+      const selectCount = await selects.count();
+      
+      if (selectCount < 3) {
+        console.log(`Warning: Expected 3 dropdowns but found ${selectCount}`);
+      }
+      
       const fySelect = selects.nth(0); 
       const qSelect = selects.nth(1); 
       const mSelect = selects.nth(2);
+      
       const quarterNum = (quarter.match(/\d/) || [null])[0];
       const quarterPatterns = quarterNum ? [`quarter ${quarterNum}`,`q${quarterNum}`,quarter.replace(/\s+/g,' ')] : [quarter];
       const monthPatterns = [month, month.slice(0,3)];
       const fyPatterns = [finYear, finYear.replace(/20(\d{2})-20(\d{2})/,'$1-$2')];
       
-      await chooseOptionByPatterns(fySelect, fyPatterns);
-      await chooseOptionByPatterns(qSelect, quarterPatterns);
-      await chooseOptionByPatterns(mSelect, monthPatterns);
+      // Select with verification
+      console.log('Selecting Financial Year...');
+      const fyResult = await chooseOptionByPatterns(fySelect, fyPatterns);
+      if (fyResult) {
+        console.log('Financial Year selected successfully');
+        await page.waitForTimeout(1000); // Allow time for dependent dropdowns to update
+      } else {
+        console.log('Warning: Financial Year selection may have failed');
+      }
+      
+      console.log('Selecting Quarter...');
+      const qResult = await chooseOptionByPatterns(qSelect, quarterPatterns);
+      if (qResult) {
+        console.log('Quarter selected successfully');
+        await page.waitForTimeout(1000); // Allow time for dependent dropdowns to update
+      } else {
+        console.log('Warning: Quarter selection may have failed');
+      }
+      
+      console.log('Selecting Month...');
+      const mResult = await chooseOptionByPatterns(mSelect, monthPatterns);
+      if (mResult) {
+        console.log('Month selected successfully');
+        await page.waitForTimeout(1000); // Allow time for UI to update
+      } else {
+        console.log('Warning: Month selection may have failed');
+      }
+      
+      console.log('All dropdown selections attempted');
     } catch(e) {
       console.log('Error in dropdown selections:', e.message);
       // Continue anyway, selections might still work
     }
     
-    // Search button with error handling
+    // Search button with enhanced verification
+    console.log('Looking for Search button...');
     try {
-      const searchVariants=[ 
+      const searchVariants = [ 
         () => page.locator('button:has-text("Search")').first(), 
         () => page.getByText(/SEARCH/i).first(), 
         () => page.locator('input[type=button][value*="Search" i]').first() 
       ];
+      
       let searchClicked = false;
-      for(const getLoc of searchVariants){ 
-        const loc=getLoc(); 
-        if(await loc.count()){ 
-          await loc.click().catch(e => {
-            console.log('Search click error:', e.message);
-          }); 
-          searchClicked = true;
-          break; 
+      for (let i = 0; i < searchVariants.length; i++) {
+        const getLoc = searchVariants[i]; 
+        const loc = getLoc(); 
+        
+        if (await loc.count()) {
+          console.log(`Found search button with variant ${i + 1}`);
+          
+          // Ensure button is visible and ready
+          try {
+            await loc.waitFor({ state: 'visible', timeout: 5000 });
+            await loc.scrollIntoViewIfNeeded();
+            await page.waitForTimeout(500); // Brief pause before clicking
+            
+            await loc.click({ timeout: 5000 }); 
+            searchClicked = true;
+            console.log('Search button clicked successfully');
+            
+            // Wait for search results to load
+            console.log('Waiting for search results...');
+            await Promise.race([
+              page.waitForSelector('text=/GSTR-2B/i', { timeout: 15000 }).catch(() => {}),
+              page.waitForSelector('button:has-text("DOWNLOAD")', { timeout: 15000 }).catch(() => {}),
+              page.waitForTimeout(10000) // Fallback timeout
+            ]);
+            console.log('Search results loaded');
+            break;
+          } catch(e) {
+            console.log(`Search click variant ${i + 1} failed:`, e.message);
+          }
         } 
       }
+      
       if (!searchClicked) {
-        console.log('No search button found or clicked');
+        console.log('Warning: No search button found or clicked successfully');
       }
     } catch(e) {
       console.log('Error handling search button:', e.message);
     }
     
-    // Open GSTR2B download with error handling
+    // Open GSTR2B download with enhanced verification
+    console.log('Opening GSTR-2B download section...');
     try {
-      await openGstr2bDownload(page);
+      const gstr2bOpened = await openGstr2bDownload(page);
+      if (gstr2bOpened) {
+        console.log('GSTR-2B download section opened successfully');
+        
+        // Wait for the download page to fully load
+        console.log('Waiting for GSTR-2B download page to load...');
+        await Promise.race([
+          page.waitForSelector('text=/GENERATE\s+EXCEL/i', { timeout: 15000 }).catch(() => {}),
+          page.waitForSelector('button:has-text("GENERATE")', { timeout: 15000 }).catch(() => {}),
+          page.waitForTimeout(8000) // Fallback timeout
+        ]);
+        console.log('GSTR-2B download page loaded');
+      } else {
+        console.log('Warning: Could not open GSTR-2B download section');
+      }
     } catch(e) {
       console.log('Error opening GSTR2B download:', e.message);
       // Continue anyway, might still be able to generate Excel

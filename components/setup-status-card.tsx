@@ -68,12 +68,12 @@ export function SetupStatusCard() {
         </CardHeader>
         <CardContent>
           {setupStatus.setupDate && (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Setup completed on: {new Date(setupStatus.setupDate).toLocaleString()}
             </p>
           )}
           {setupStatus.version && (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Version: {setupStatus.version}
             </p>
           )}
@@ -91,7 +91,7 @@ export function SetupStatusCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-muted-foreground">
           <p>This will install Playwright Chromium browser for automation.</p>
           <p>The installation may take a few minutes depending on your internet connection.</p>
         </div>

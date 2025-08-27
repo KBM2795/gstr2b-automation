@@ -198,10 +198,66 @@ ipcMain.handle('n8n:getStatus', async () => {
 })
 
 ipcMain.handle('n8n:createWorkflow', async () => {
-  if (n8nServer) {
-    return await n8nServer.createGSTR2BWorkflow()
+  try {
+    if (!n8nServer) {
+      // Try to initialize n8nServer if it doesn't exist
+      console.log('n8nServer not initialized, attempting to create...')
+      n8nServer = new N8nServer(configPath)
+    }
+    
+    const result = await n8nServer.createGSTR2BWorkflow()
+    console.log('Create workflow result:', result)
+    return result
+  } catch (error) {
+    console.error('Failed to create workflow:', error)
+    return {
+      success: false,
+      error: `Failed to create workflow: ${error.message}`,
+      details: error.stack
+    }
   }
-  return null
+})
+
+// IPC handler for injecting workflow directly into n8n
+ipcMain.handle('n8n:injectWorkflow', async () => {
+  try {
+    if (!n8nServer) {
+      console.log('n8nServer not initialized, attempting to create...')
+      n8nServer = new N8nServer(configPath)
+    }
+    
+    const result = await n8nServer.injectWorkflowToN8n()
+    console.log('Inject workflow result:', result)
+    return result
+  } catch (error) {
+    console.error('Failed to inject workflow:', error)
+    return {
+      success: false,
+      error: `Failed to inject workflow: ${error.message}`,
+      details: error.stack
+    }
+  }
+})
+
+// IPC handler for creating workflow from custom JSON
+ipcMain.handle('n8n:createWorkflowFromJSON', async (event, workflowJSON) => {
+  try {
+    if (!n8nServer) {
+      console.log('n8nServer not initialized, attempting to create...')
+      n8nServer = new N8nServer(configPath)
+    }
+    
+    const result = await n8nServer.createWorkflowFromJSON(workflowJSON)
+    console.log('Create workflow from JSON result:', result)
+    return result
+  } catch (error) {
+    console.error('Failed to create workflow from JSON:', error)
+    return {
+      success: false,
+      error: `Failed to create workflow from JSON: ${error.message}`,
+      details: error.stack
+    }
+  }
 })
 
 // IPC handler for starting n8n
@@ -438,8 +494,7 @@ app.whenReady().then(async () => {
     console.error('Failed to start GSTR-2B automation server:', error)
   }
 
-  // Start n8n server (temporarily disabled for testing)
-  /*
+  // Start n8n server
   try {
     n8nServer = new N8nServer(configPath)
     const n8nInfo = await n8nServer.start()
@@ -453,7 +508,6 @@ app.whenReady().then(async () => {
     // Don't let n8n failure block the app
     n8nServer = null
   }
-  */
 })
 
 app.on('window-all-closed', async () => {

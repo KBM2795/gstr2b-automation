@@ -15,8 +15,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [excelPath, setExcelPath] = useState("")
   const [storagePath, setStoragePath] = useState("")
   const [hideWizard, setHideWizard] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+
     // Check if locations are already saved
     const checkSavedLocations = async () => {
       try {
@@ -42,7 +49,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     }
 
     checkSavedLocations()
-  }, []);
+  }, [mounted]);
 
   const handleFileSelect = async (type: "excel" | "storage") => {
     try {
@@ -104,7 +111,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           await (window as any).electronAPI.saveLocation({ path: storagePath, type: 'folder' })
         }
         
-        localStorage.setItem("gstr2bConfig", JSON.stringify({ excelPath, storagePath }))
+        if (mounted && typeof window !== 'undefined') {
+          localStorage.setItem("gstr2bConfig", JSON.stringify({ excelPath, storagePath }))
+        }
         onComplete({ excelPath, storagePath })
       } catch (error) {
         console.error('Failed to save locations:', error)

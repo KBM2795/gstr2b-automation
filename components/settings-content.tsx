@@ -18,7 +18,12 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
   const [excelPath, setExcelPath] = useState(config.excelPath)
   const [storagePath, setStoragePath] = useState(config.storagePath)
   const [isSaving, setIsSaving] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const { theme, setTheme } = useTheme()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     setExcelPath(config.excelPath)
@@ -114,7 +119,9 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
       }
 
       const newConfig = { excelPath, storagePath }
-      localStorage.setItem("gstr2bConfig", JSON.stringify(newConfig))
+      if (mounted && typeof window !== 'undefined') {
+        localStorage.setItem("gstr2bConfig", JSON.stringify(newConfig))
+      }
       onConfigUpdate(newConfig)
       
       alert("Configuration saved successfully!")
@@ -130,7 +137,9 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
     if (confirm("Are you sure you want to reset all configuration? This will clear all saved paths.")) {
       try {
         // Clear localStorage
-        localStorage.removeItem("gstr2bConfig")
+        if (mounted && typeof window !== 'undefined') {
+          localStorage.removeItem("gstr2bConfig")
+        }
         
         // Clear local state
         setExcelPath("")

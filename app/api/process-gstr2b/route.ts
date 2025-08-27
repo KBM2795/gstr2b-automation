@@ -261,7 +261,7 @@ export async function POST(request: Request) {
         const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout (180 seconds)
 
         // Send to n8n webhook (updated URL format)
-        const webhookResponse = await fetch('http://127.0.0.1:5678/webhook-test/gstr2b-email', {
+        const webhookResponse = await fetch('http://127.0.0.1:5678/webhook/gstr2b-email', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -293,7 +293,7 @@ export async function POST(request: Request) {
             "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
             "status": webhookResponse.status,
             "message": errorText || `HTTP ${webhookResponse.status}`,
-            "webhook_url": "http://127.0.0.1:5678/webhook-test/gstr2b-email",
+            "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email",
             "error_details": {
               "status_code": webhookResponse.status,
               "status_text": webhookResponse.statusText,
@@ -382,7 +382,7 @@ export async function POST(request: Request) {
               "status": webhookResult?.status || webhookResponse.status,
               "message": logMessage,
               "webhook_response": responseText, // Include raw response for debugging
-              "webhook_url": "http://127.0.0.1:5678/webhook-test/gstr2b-email",
+              "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email",
               "n8n_response": webhookResult // Include parsed n8n response
             }
             console.log('Webhook Success Log:', JSON.stringify(successLog, null, 2))
@@ -399,7 +399,7 @@ export async function POST(request: Request) {
               "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
               "status": webhookResponse.status,
               "message": `Success - Response processing error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-              "webhook_url": "http://127.0.0.1:5678/webhook-test/gstr2b-email"
+              "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email"
             }
             saveLogToFile(basicSuccessLog)
           }
@@ -415,7 +415,7 @@ export async function POST(request: Request) {
           "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
           "status": 500, // Internal error status
           "message": errorMessage,
-          "webhook_url": "http://127.0.0.1:5678/webhook-test/gstr2b-email",
+          "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email",
           "error_type": error instanceof Error ? error.constructor.name : 'Unknown',
           "error_details": {
             "full_error": error instanceof Error ? error.stack : String(error)

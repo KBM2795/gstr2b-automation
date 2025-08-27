@@ -18,8 +18,15 @@ const AppContext = createContext<AppContextType | undefined>(undefined)
 export function AppProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AppConfig>({ excelPath: "", storagePath: "" })
   const [isLoading, setIsLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    
     // Load config from localStorage and Electron storage
     const loadConfig = async () => {
       try {
@@ -81,11 +88,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     loadConfig()
-  }, [])
+  }, [mounted])
 
   const updateConfig = (newConfig: AppConfig) => {
     setConfig(newConfig)
-    localStorage.setItem("gstr2bConfig", JSON.stringify(newConfig))
+    if (mounted && typeof window !== 'undefined') {
+      localStorage.setItem("gstr2bConfig", JSON.stringify(newConfig))
+    }
   }
 
   return (

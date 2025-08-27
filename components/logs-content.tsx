@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { LogsManagement } from "@/components/logs-management"
-import { CheckCircle, XCircle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
+import { CheckCircle, XCircle, ChevronLeft, ChevronRight, RefreshCw, Trash2 } from "lucide-react"
 
 interface LogEntry {
   id: number
@@ -34,6 +34,64 @@ export function LogsContent() {
     return now.toISOString().split('T')[0] // YYYY-MM-DD format
   })
   const itemsPerPage = 10
+
+  // Delete activity log function
+  const deleteActivityLog = async (logId: string) => {
+    if (!window.confirm('Are you sure you want to delete this activity log? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      // Remove from local state immediately for better UX
+      setActivityLogs(prev => prev.filter(log => log.id !== logId))
+      
+      // Try to delete via API if available
+      try {
+        const response = await fetch(`/api/activity-logs/${logId}`, {
+          method: 'DELETE'
+        })
+        
+        if (!response.ok) {
+          console.warn('Failed to delete activity log via API, but removed from local state')
+        }
+      } catch (error) {
+        console.warn('API not available for activity log deletion, but removed from local state:', error)
+      }
+    } catch (error) {
+      console.error('Failed to delete activity log:', error)
+      // Refresh logs to restore state if deletion failed
+      fetchActivityLogs()
+    }
+  }
+
+  // Clear all activity logs function
+  const clearAllActivityLogs = async () => {
+    if (!window.confirm(`Are you sure you want to clear ALL activity logs for ${selectedDate}? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      // Clear local state immediately for better UX
+      setActivityLogs([])
+      
+      // Try to clear via API if available
+      try {
+        const response = await fetch(`/api/activity-logs?date=${selectedDate}`, {
+          method: 'DELETE'
+        })
+        
+        if (!response.ok) {
+          console.warn('Failed to clear activity logs via API, but cleared from local state')
+        }
+      } catch (error) {
+        console.warn('API not available for activity log clearing, but cleared from local state:', error)
+      }
+    } catch (error) {
+      console.error('Failed to clear activity logs:', error)
+      // Refresh logs to restore state if clearing failed
+      fetchActivityLogs()
+    }
+  }
 
   // Real logs would come from your actual activity tracking
   // For now, showing empty state since webhook logs are the main feature
@@ -80,12 +138,12 @@ export function LogsContent() {
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+      <div className="flex space-x-1 bg-muted p-1 rounded-lg">
         <button
           onClick={() => setActiveTab("webhook-logs")}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === "webhook-logs"
-              ? "bg-white text-primary shadow-sm"
+              ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -95,7 +153,7 @@ export function LogsContent() {
           onClick={() => setActiveTab("activity-logs")}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === "activity-logs"
-              ? "bg-white text-primary shadow-sm"
+              ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -120,7 +178,7 @@ export function LogsContent() {
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                  className="px-3 py-1 border border-border rounded-md text-sm"
                 />
                 <Button 
                   onClick={fetchActivityLogs} 
@@ -131,26 +189,37 @@ export function LogsContent() {
                   <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
+                {activityLogs.length > 0 && (
+                  <Button 
+                    onClick={clearAllActivityLogs}
+                    variant="destructive" 
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Clear All
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="text-center py-12">
-                <RefreshCw className="h-8 w-8 mx-auto mb-4 text-gray-400 animate-spin" />
-                <p className="text-gray-500">Loading activity logs...</p>
+                <RefreshCw className="h-8 w-8 mx-auto mb-4 text-muted-foreground animate-spin" />
+                <p className="text-muted-foreground">Loading activity logs...</p>
               </div>
             ) : activityLogs.length === 0 ? (
               <div className="text-center py-12">
-                <div className="text-gray-500 mb-4">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                                <div className="text-muted-foreground mb-4">
+                  <CheckCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Activity Logs</h3>
-                <p className="text-gray-500 mb-4">
-                  Activity logs for {selectedDate} will appear here when you perform GSTR-2B processing.
+                <h3 className="text-lg font-medium text-foreground mb-2">No Activity Logs</h3>
+                <p className="text-muted-foreground mb-4">
+                  No activity logs found for the selected date.
                 </p>
-                <p className="text-sm text-gray-400">
-                  For webhook logs from Excel processing, check the "Webhook Logs" tab above.
+                <p className="text-sm text-muted-foreground">
+                  Activity logs will appear here after automation runs.
                 </p>
               </div>
             ) : (
@@ -162,6 +231,7 @@ export function LogsContent() {
                       <TableHead>Status</TableHead>
                       <TableHead>Message</TableHead>
                       <TableHead>Timestamp</TableHead>
+                      <TableHead className="w-20">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -189,8 +259,19 @@ export function LogsContent() {
                             {log.message}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm text-gray-500">
-                          {new Date(log.timestamp).toLocaleString()}
+                                                <TableCell className="text-sm text-muted-foreground">
+                          {log.timestamp}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteActivityLog(log.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            title="Delete this activity log"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -199,7 +280,7 @@ export function LogsContent() {
 
                 {activityTotalPages > 1 && (
                   <div className="flex items-center justify-between mt-4">
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-muted-foreground">
                       Showing {activityStartIndex + 1} to {Math.min(activityEndIndex, activityLogs.length)} of{" "}
                       {activityLogs.length} activity logs
                     </p>

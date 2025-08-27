@@ -1,0 +1,343 @@
+{
+  "name": "GSTR2B-CA",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a62ce317-21c0-41f0-97a9-0777240f1bab",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cf5d40f8-b76e-48db-b981-06471cbadfea",
+              "leftValue": "={{ $('HTTP Request').item.json.success }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -816,
+        32
+      ],
+      "id": "fc834a8b-ab81-4e2b-9be3-331b25a6a1c2",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3001/api/gstr2b-automation",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"{{ $json.body.ID }}\",\n  \"password\": \"{{ $json.body.PASSWORD }}\",\n  \"quarter\": \"{{ $json.body.metadata.quarter }}\",\n  \"month\": \"{{ $json.body.metadata.month }}\",\n  \"year\": \"{{ $json.body.metadata.year }}\",\n  \"client_folder\": \"{{ $json.body['File No.'] }}\"\n}\n",
+        "options": {
+          "timeout": 200000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        32
+      ],
+      "id": "4024145a-5084-4b52-b344-438ec35d64a1",
+      "name": "HTTP Request",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "39c62713-a9db-4fa3-912e-f0fa6f5e8e96",
+              "name": "Client Name",
+              "value": "={{ $('Webhook').item.json.body['CLIENT NAME'] }}",
+              "type": "string"
+            },
+            {
+              "id": "d8f74b34-dffb-4a62-a779-eb629863d2a0",
+              "name": "file no",
+              "value": "={{ $('Webhook').item.json.body['File No.'] }}",
+              "type": "string"
+            },
+            {
+              "id": "e8d2e3d8-2c48-42e1-acad-8c84612a9fa7",
+              "name": "status",
+              "value": "={{ $json.error.status }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1040,
+        32
+      ],
+      "id": "ec983013-ff47-4e9d-8f5c-0f3043f4d3b3",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "data.fileBase64",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -304,
+        16
+      ],
+      "id": "c1d7644b-ec28-426d-9d39-4f67bedb676f",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gstr2b-email",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1520,
+        32
+      ],
+      "id": "dae5f926-0f32-4bea-91d2-774400c1817d",
+      "name": "Webhook",
+      "webhookId": "d717e7fc-211d-4467-b6ea-09fdd93b5d3b"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"Client Name\":\"{{ $('Edit Fields2').item.json['Client Name'] }}\",\n  \"status\":{{ $('Edit Fields2').item.json.status }},\n\"message\":\"{{ $json.parsed.message }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -16,
+        256
+      ],
+      "id": "db1a85e5-9101-4c77-8469-afeda1a58f29",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"Client Name\":\"{{ $('Edit Fields2').item.json['Client Name'] }}\",\n  \"status\":200,\n\"message\":\"Successfully executed.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        336,
+        16
+      ],
+      "id": "0da1787d-a541-4b87-b49f-16b06265e34d",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take the raw string (adjust node/field name as needed)\nlet str = $('HTTP Request').first().json.error.message || \"\";\n\n// Remove \"400 - \" prefix if exists\nlet jsonStr = str.includes(\" - \") ? str.split(\" - \")[1] : str;\n\n// Trim extra spaces\njsonStr = jsonStr.trim();\n\n// Defensive: strip wrapping quotes\nif (jsonStr.startsWith('\"') && jsonStr.endsWith('\"')) {\n  jsonStr = jsonStr.slice(1, -1);\n}\n\n// Unescape backslashes first\njsonStr = jsonStr.replace(/\\\\\"/g, '\"');\n\n// Parse safely\nlet parsed = {};\ntry {\n  parsed = JSON.parse(jsonStr);\n} catch (e) {\n  parsed = { error: \"Failed to parse\", raw: jsonStr };\n}\n\nreturn [\n  {\n    parsed\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        272
+      ],
+      "id": "90292729-fdbc-40d4-8f9a-7e95459cfa3f",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5e72237e-7722-499d-bb93-e8c0b32cd016",
+              "name": "data.fileBase64",
+              "value": "={{ $('HTTP Request').item.json.data.fileBase64 }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -528,
+        16
+      ],
+      "id": "5b740f6f-4b75-4143-b97b-9b44f6491b37",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "toRecipients": "={{ $('Webhook').item.json.body['Email Id 1'] }}",
+        "subject": "hii",
+        "bodyContent": "hiii",
+        "additionalFields": {
+          "attachments": {
+            "attachments": [
+              {
+                "binaryPropertyName": "data"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        32,
+        16
+      ],
+      "id": "1b339ed5-5ddb-49e7-b975-4abbdfca3594",
+      "name": "Send a message",
+      "webhookId": "71ee6443-7ca6-433f-9652-58eb27d18bd1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "PCzX0ka4mhKzHS8F",
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f62036c4-18a4-4dc2-a504-44a1339b887e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "41db9767e22ea919c325d717d2e2fa8c7192ab3d9fcb7d1cd581233bee818832"
+  },
+  "id": "AKyyUtuLkJC4cBrR",
+  "tags": []
+}
