@@ -42,4 +42,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Logs methods
   readLogFile: (date) => ipcRenderer.invoke('logs:readFile', date),
   clearLogFile: (date, options) => ipcRenderer.invoke('logs:clearFile', date, options),
+  
+  // Auto-updater methods
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  
+  // Listen for update events
+  onUpdateStatus: (callback) => ipcRenderer.on('update-status', callback),
+  onDownloadProgress: (callback) => ipcRenderer.on('download-progress', callback),
+  removeUpdateListeners: () => {
+    ipcRenderer.removeAllListeners('update-status')
+    ipcRenderer.removeAllListeners('download-progress')
+  }
 })

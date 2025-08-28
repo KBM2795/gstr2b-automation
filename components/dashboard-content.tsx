@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { N8nIntegration } from "@/components/n8n-integration"
 import { GSTR2BAutomation } from "@/components/gstr2b-automation"
 import { SetupStatusCard } from "@/components/setup-status-card"
-import { FileSpreadsheet, FolderOpen, Calculator, FileText, Download } from "lucide-react"
+import { FileSpreadsheet, FolderOpen, Calculator, FileText, Download, Square } from "lucide-react"
 
 interface DashboardContentProps {
   config: { excelPath: string; storagePath: string }
@@ -46,6 +46,7 @@ export function DashboardContent({ config }: DashboardContentProps) {
   }
 
   const [isProcessing, setIsProcessing] = useState(false)
+  const [canStop, setCanStop] = useState(false)
 
   // Reset month when quarter changes
   useEffect(() => {
@@ -54,16 +55,23 @@ export function DashboardContent({ config }: DashboardContentProps) {
 
   const handleProcessGSTR2B = async () => {
     setIsProcessing(true)
+    setCanStop(true)
     const formData = { year, quarter, month }
     console.log("[v0] GSTR2B processing initiated:", formData)
     
     try {
-      // Process GSTR2B file row by row
+      // Process GSTR2B file row by row with AbortController for stopping
+      const abortController = new AbortController()
+      
+      // Store the abort controller globally so stop function can access it
+      ;(window as any).currentProcessAbortController = abortController
+      
       const response = await fetch('/api/process-gstr2b', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           year,
           quarter,
@@ -83,6 +91,17 @@ export function DashboardContent({ config }: DashboardContentProps) {
           `Processed: ${result.summary.processedRows}\n` +
           `Success Rate: ${result.summary.successRate}\n` +
           `${result.summary.errorCount > 0 ? `Errors: ${result.summary.errorCount}` : ''}`
+        )
+      } else if (result.stopped) {
+        // Handle stopped processing
+        console.log('Processing was stopped by user:', result)
+        alert(
+          `✋ Processing Stopped\n\n` +
+          `${result.message}\n\n` +
+          `Progress Summary:\n` +
+          `• Total Rows: ${result.totalRows}\n` +
+          `• Processed: ${result.processedRows}\n` +
+          `• Remaining: ${result.totalRows - result.processedRows}`
         )
       } else {
         console.error('Processing failed:', result)
@@ -110,9 +129,53 @@ export function DashboardContent({ config }: DashboardContentProps) {
       }
     } catch (error) {
       console.error('Failed to process GSTR2B:', error)
-      alert('Failed to process GSTR2B file. Please check if the file exists and try again.')
+      
+      // Check if error is due to abort (user stopped)
+      if (error instanceof Error && error.name === 'AbortError') {
+        alert('Processing has been stopped by user request.\n\nCurrent row execution will complete, but no further rows will be processed.')
+      } else {
+        alert('Failed to process GSTR2B file. Please check if the file exists and try again.')
+      }
     } finally {
       setIsProcessing(false)
+      setCanStop(false)
+      // Clear the global abort controller
+      ;(window as any).currentProcessAbortController = null
+    }
+  }
+
+  const handleStopProcessing = async () => {
+    if (!window.confirm('Are you sure you want to stop the processing?\n\nThe current row will complete execution, but no further rows will be processed.')) {
+      return
+    }
+
+    try {
+      console.log('Sending stop signal to server...')
+      
+      // First, call the API to stop server-side processing
+      const stopResponse = await fetch('/api/process-gstr2b/stop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
+      const stopResult = await stopResponse.json()
+      console.log('Stop API response:', stopResult)
+      
+      if (stopResult.success) {
+        alert('Stop signal sent successfully.\n\nCurrent row will complete, but no further rows will be processed.')
+      } else {
+        console.error('Stop API failed:', stopResult)
+        alert('Failed to send stop signal. Processing may continue.')
+      }
+      
+      // Don't abort the connection immediately - let server respond naturally
+      // The server will check the stop flag and return with stopped status
+      
+    } catch (error) {
+      console.error('Failed to stop processing:', error)
+      alert('Failed to send stop signal. Processing may continue.')
     }
   }
 
@@ -242,15 +305,29 @@ export function DashboardContent({ config }: DashboardContentProps) {
             </Select>
           </div>
 
-          <Button
-            onClick={handleProcessGSTR2B}
-            className="w-full font-medium"
-            size="lg"
-            disabled={!year || !quarter || !month || !config.excelPath || isProcessing}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            {isProcessing ? 'Processing Excel File...' : 'Process GSTR2B Excel File'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleProcessGSTR2B}
+              className="flex-1 font-medium"
+              size="lg"
+              disabled={!year || !quarter || !month || !config.excelPath || isProcessing}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              {isProcessing ? 'Processing Excel File...' : 'Process GSTR2B Excel File'}
+            </Button>
+            
+            {isProcessing && (
+              <Button
+                onClick={handleStopProcessing}
+                variant="destructive"
+                size="lg"
+                className="px-4"
+                title="Stop processing (current row will complete)"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
           
           {!config.excelPath && (
             <p className="text-sm text-amber-600 text-center mt-2">

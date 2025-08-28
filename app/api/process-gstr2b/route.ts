@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import fs from 'fs'
 import path from 'path'
+import { setProcessStopFlag, shouldStopProcessing, setCurrentProcessInfo } from './stop/route'
 
 // Helper function to save logs to file
 function saveLogToFile(logEntry: any) {
@@ -218,11 +219,47 @@ export async function POST(request: Request) {
     }
     saveActivityLogToFile(processingStartLog)
 
+    // Reset stop flag at start of processing
+    setProcessStopFlag(false)
+
     // Process each row (skip header)
     let captchaErrorOccurred = false
     let captchaErrorMessage = ''
     
     for (let i = 1; i < jsonData.length; i++) {
+      // Check if stop was requested before processing this row
+      console.log(`Checking stop flag before processing row ${i + 1}...`)
+      if (shouldStopProcessing()) {
+        console.log(`Processing stopped at row ${i + 1} by user request`)
+        const stopMessage = `Process stopped by user at row ${i + 1}. ${i} rows were processed successfully.`
+        
+        const stopLog = {
+          id: Date.now().toString(),
+          timestamp: new Date().toISOString(),
+          type: 'warning',
+          message: stopMessage,
+          details: `Total rows: ${jsonData.length - 1}, Processed: ${i}, Remaining: ${jsonData.length - 1 - i}`
+        }
+        saveActivityLogToFile(stopLog)
+        
+        return Response.json({ 
+          success: false, 
+          message: stopMessage,
+          processedRows: i,
+          totalRows: jsonData.length - 1,
+          stopped: true
+        })
+      }
+      
+      console.log(`Stop flag check passed - processing row ${i + 1}`)
+      
+      // Update current process info for monitoring
+      setCurrentProcessInfo({
+        currentRow: i + 1,
+        totalRows: jsonData.length - 1,
+        status: 'processing'
+      })
+      
       // Stop processing if captcha error occurred
       if (captchaErrorOccurred) {
         console.log(`Skipping row ${i} due to captcha error`)
@@ -463,6 +500,14 @@ export async function POST(request: Request) {
     }
     saveActivityLogToFile(summaryLog)
 
+    // Clear stop flag and process info on completion
+    setProcessStopFlag(false)
+    setCurrentProcessInfo({
+      currentRow: 0,
+      totalRows: 0,
+      status: 'completed'
+    })
+
     // Return summary
     return Response.json({
       success: !captchaErrorOccurred, // Mark as failed if captcha error occurred
@@ -505,6 +550,14 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('API error:', error)
+    
+    // Clear stop flag and process info on error
+    setProcessStopFlag(false)
+    setCurrentProcessInfo({
+      currentRow: 0,
+      totalRows: 0,
+      status: 'error'
+    })
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     

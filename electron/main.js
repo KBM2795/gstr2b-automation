@@ -5,6 +5,7 @@ const ElectronAPI = require('./api-server')
 const N8nServer = require('./n8n-server')
 const { GSTR2BAutomationServer } = require('./gstr2b-automation-server')
 const FirstRunSetup = require('./first-run-setup')
+const AutoUpdater = require('./updater')
 const isDev = process.env.NODE_ENV === 'development'
 
 // Suppress Chromium warnings and errors
@@ -19,6 +20,7 @@ let apiServer
 let n8nServer
 let gstr2bAutomationServer
 let firstRunSetup
+let autoUpdater
 
 // Path for storing app data
 const userDataPath = app.getPath('userData')
@@ -44,6 +46,26 @@ function readConfig() {
 // Write config
 function writeConfig(config) {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+}
+
+// Initialize auto-updater
+function initializeAutoUpdater() {
+  try {
+    autoUpdater = new AutoUpdater(mainWindow)
+    
+    // Start periodic checks every 4 hours
+    autoUpdater.startPeriodicCheck(4)
+    
+    // Check for updates 15 seconds after app start
+    setTimeout(() => {
+      console.log('Checking for updates...')
+      autoUpdater.checkForUpdates()
+    }, 15000)
+    
+    console.log('Auto-updater initialized successfully')
+  } catch (error) {
+    console.error('Failed to initialize auto-updater:', error)
+  }
 }
 
 function createWindow() {
@@ -73,6 +95,11 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
+    
+    // Initialize auto-updater after window is ready (only in production)
+    if (!isDev) {
+      initializeAutoUpdater()
+    }
     
     if (isDev) {
       mainWindow.webContents.openDevTools()
@@ -428,6 +455,38 @@ ipcMain.handle('logs:clearFile', async (event, date, options = {}) => {
   }
 })
 
+// Auto-updater IPC handlers
+ipcMain.handle('updater:check', async () => {
+  if (autoUpdater && !isDev) {
+    autoUpdater.checkForUpdates()
+    return { success: true, message: 'Checking for updates...' }
+  } else {
+    return { success: false, message: 'Auto-updater not available in development mode' }
+  }
+})
+
+ipcMain.handle('updater:download', async () => {
+  if (autoUpdater && !isDev) {
+    autoUpdater.downloadUpdate()
+    return { success: true, message: 'Starting update download...' }
+  } else {
+    return { success: false, message: 'Auto-updater not available in development mode' }
+  }
+})
+
+ipcMain.handle('updater:install', async () => {
+  if (autoUpdater && !isDev) {
+    autoUpdater.installUpdate()
+    return { success: true, message: 'Installing update and restarting...' }
+  } else {
+    return { success: false, message: 'Auto-updater not available in development mode' }
+  }
+})
+
+ipcMain.handle('app:getVersion', async () => {
+  return require('../package.json').version
+})
+
 app.whenReady().then(async () => {
   initConfig()
   
@@ -529,6 +588,12 @@ app.on('window-all-closed', async () => {
     } catch (error) {
       console.error('Failed to stop GSTR-2B automation server:', error)
     }
+  }
+  
+  // Stop auto-updater periodic checks
+  if (autoUpdater) {
+    autoUpdater.stopPeriodicCheck()
+    console.log('Auto-updater stopped')
   }
   
   if (n8nServer) {
