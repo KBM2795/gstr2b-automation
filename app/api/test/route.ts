@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 
+// Force Node.js runtime to avoid fetch errors in Electron/production
+export const runtime = 'nodejs'
+
 export async function GET() {
   return NextResponse.json({
     success: true,

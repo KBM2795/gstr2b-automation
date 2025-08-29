@@ -1,7 +1,11 @@
 import * as XLSX from 'xlsx'
 import fs from 'fs'
 import path from 'path'
-import { setProcessStopFlag, shouldStopProcessing, setCurrentProcessInfo } from './stop/route'
+import { NextRequest, NextResponse } from 'next/server'
+import { setProcessStopFlag, shouldStopProcessing, setCurrentProcessInfo } from '@/lib/process-state'
+
+// Force Node.js runtime to avoid fetch errors in Electron/production
+export const runtime = 'nodejs'
 
 // Helper function to save logs to file
 function saveLogToFile(logEntry: any) {
@@ -290,54 +294,184 @@ export async function POST(request: Request) {
         }
       }
 
-      try {
-        console.log(`Sending row ${i} to webhook...`)
-        
-        // Create AbortController for timeout (increased to 3 minutes for GSTR-2B automation)
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout (180 seconds)
+      // Step 1: Prepare automation payload (moved outside try block for error handling)
+      const automationPayload = {
+        username: rowObject['ID'] || rowObject['id'] || '',
+        password: rowObject['PASSWORD'] || rowObject['password'] || '',
+        quarter: quarter,
+        month: month,
+        year: year,
+        client_folder: rowObject['File No.'] || rowObject['file_no'] || ''
+      }
 
-        // Send to n8n webhook (updated URL format)
-        const webhookResponse = await fetch('http://127.0.0.1:5678/webhook/gstr2b-email', {
+      try {
+        console.log(`Processing row ${i} - calling local automation API first...`)
+        
+        console.log('Automation payload:', automationPayload)
+        
+        // Create AbortController for local automation timeout
+        const automationController = new AbortController()
+        const automationTimeoutId = setTimeout(() => automationController.abort(), 300000) // 5 minute timeout
+        
+        const automationResponse = await fetch('http://localhost:3001/api/gstr2b-automation', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(enrichedData),
-          signal: controller.signal
+          body: JSON.stringify(automationPayload),
+          signal: automationController.signal
         })
-
-        clearTimeout(timeoutId)
+        
+        clearTimeout(automationTimeoutId)
+        
+        if (!automationResponse.ok) {
+          const errorText = await automationResponse.text()
+          let parsedError = null
+          let detailedMessage = errorText
+          
+          // Try to parse error response as JSON for better error handling
+          try {
+            parsedError = JSON.parse(errorText)
+            if (parsedError.error) {
+              detailedMessage = parsedError.error
+            } else if (parsedError.message) {
+              detailedMessage = parsedError.message
+            }
+          } catch (parseError) {
+            console.log(`Failed to parse automation error response as JSON: ${parseError}`)
+          }
+          
+          errors.push(`Row ${i}: Local automation failed - ${detailedMessage}`)
+          console.error(`Failed automation for row ${i}:`, {
+            status: automationResponse.status,
+            statusText: automationResponse.statusText,
+            errorText: errorText,
+            parsedError: parsedError
+          })
+          
+          // Check for specific error types (captcha, network, etc.)
+          let errorType = 'automation_error'
+          if (detailedMessage.toLowerCase().includes('captcha')) {
+            errorType = 'captcha_error'
+          } else if (detailedMessage.toLowerCase().includes('timeout')) {
+            errorType = 'timeout_error'
+          } else if (detailedMessage.toLowerCase().includes('network')) {
+            errorType = 'network_error'
+          } else if (detailedMessage.toLowerCase().includes('authentication') || detailedMessage.toLowerCase().includes('login')) {
+            errorType = 'auth_error'
+          }
+          
+          // Log detailed automation error
+          const errorLog = {
+            "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
+            "status": automationResponse.status,
+            "message": `Local automation failed: ${detailedMessage}`,
+            "step": "local_automation",
+            "error_type": errorType,
+            "error_details": {
+              "status_code": automationResponse.status,
+              "status_text": automationResponse.statusText,
+              "raw_error": errorText,
+              "parsed_error": parsedError,
+              "automation_payload": automationPayload
+            },
+            "automation_url": "http://localhost:3001/api/gstr2b-automation"
+          }
+          saveLogToFile(errorLog)
+          continue // Skip to next row if automation fails
+        }
+        
+        // Get automation result (should contain base64 file data)
+        let automationResult
+        try {
+          automationResult = await automationResponse.json()
+          console.log('Automation completed for row', i, 'result summary:', {
+            success: automationResult.success,
+            hasData: !!automationResult.data,
+            filePath: automationResult.filePath
+          })
+          
+          // Check if automation was successful but returned an error
+          if (automationResult.success === false) {
+            const errorMessage = automationResult.error || automationResult.message || 'Unknown automation error'
+            errors.push(`Row ${i}: Automation returned error - ${errorMessage}`)
+            
+            const errorLog = {
+              "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
+              "status": "automation_error",
+              "message": `Automation returned error: ${errorMessage}`,
+              "step": "local_automation_result",
+              "error_details": automationResult,
+              "automation_payload": automationPayload
+            }
+            saveLogToFile(errorLog)
+            continue // Skip to next row if automation returned an error
+          }
+          
+        } catch (jsonError) {
+          const errorMessage = `Failed to parse automation response as JSON: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`
+          errors.push(`Row ${i}: ${errorMessage}`)
+          console.error(`JSON parse error for automation response for row ${i}:`, jsonError)
+          
+          const errorLog = {
+            "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
+            "status": "json_parse_error",
+            "message": errorMessage,
+            "step": "local_automation_parse",
+            "error_details": {
+              "parse_error": jsonError instanceof Error ? jsonError.message : 'Unknown error',
+              "automation_payload": automationPayload
+            }
+          }
+          saveLogToFile(errorLog)
+          continue // Skip to next row if we can't parse the automation response
+        }
+        
+        // Step 2: Send result to external n8n webhook
+        const webhookPayload = {
+          ...enrichedData,
+          automation_result: automationResult
+        }
+        
+        console.log(`Sending row ${i} to external webhook...`)
+        
+        // Create AbortController for webhook timeout
+        const webhookController = new AbortController()
+        const webhookTimeoutId = setTimeout(() => webhookController.abort(), 180000) // 3 minute timeout
+        
+        // Send to external n8n webhook
+        const webhookResponse = await fetch('https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+          signal: webhookController.signal
+        })
+        
+        clearTimeout(webhookTimeoutId)
 
         if (!webhookResponse.ok) {
           const errorText = await webhookResponse.text()
-          errors.push(`Row ${i}: Webhook failed - ${errorText}`)
-          console.error(`Failed to send row ${i} to webhook:`, errorText)
-          console.error(`Webhook response status:`, webhookResponse.status)
-          console.error(`Webhook response headers:`, Object.fromEntries(webhookResponse.headers.entries()))
-          
-          // Check for captcha errors in error response
-          if (errorText.toLowerCase().includes('captcha recharge') || 
-              errorText.toLowerCase().includes('captcha limit') ||
-              errorText.includes('CAPTCHA_LIMIT')) {
-            captchaErrorOccurred = true
-            captchaErrorMessage = errorText
-            console.log('CAPTCHA ERROR DETECTED in error response - Stopping further processing')
-          }
+          errors.push(`Row ${i}: External webhook failed - ${errorText}`)
+          console.error(`Failed to send row ${i} to external webhook:`, errorText)
+          console.error(`External webhook response status:`, webhookResponse.status)
+          console.error(`External webhook response headers:`, Object.fromEntries(webhookResponse.headers.entries()))
           
           // Log webhook error response with more details
           const errorLog = {
             "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
             "status": webhookResponse.status,
             "message": errorText || `HTTP ${webhookResponse.status}`,
-            "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email",
+            "webhook_url": "https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email",
+            "step": "external_webhook",
             "error_details": {
               "status_code": webhookResponse.status,
               "status_text": webhookResponse.statusText,
               "response_body": errorText
             }
           }
-          console.log('Webhook Error Log:', JSON.stringify(errorLog, null, 2))
+          console.log('External Webhook Error Log:', JSON.stringify(errorLog, null, 2))
           
           // Save error log to file
           saveLogToFile(errorLog)
@@ -347,96 +481,56 @@ export async function POST(request: Request) {
           
           try {
             const responseText = await webhookResponse.text()
-            console.log(`Raw webhook response for row ${i}:`, responseText)
+            console.log(`Raw external webhook response for row ${i}:`, responseText)
             
             let webhookResult
-            let logMessage = "Success"
+            let logMessage = "Success - Processed through local automation and external webhook"
             let clientName = rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`
             
             // Try to parse response as JSON
             try {
               webhookResult = JSON.parse(responseText)
-              console.log(`Parsed webhook response for row ${i}:`, webhookResult)
+              console.log(`Parsed external webhook response for row ${i}:`, webhookResult)
               
-              // Extract data from n8n webhook response format
+              // Extract data from external webhook response format
               if (webhookResult['Client Name']) {
                 clientName = webhookResult['Client Name']
               }
               
               // Extract meaningful message from webhook response
               if (webhookResult.message) {
-                logMessage = webhookResult.message
-                
-                // Parse nested error messages from automation server
-                if (typeof webhookResult.message === 'string' && webhookResult.message.includes('{"success":false')) {
-                  try {
-                    // Extract the JSON error from the string
-                    const errorMatch = webhookResult.message.match(/\{.*\}/);
-                    if (errorMatch) {
-                      const nestedError = JSON.parse(errorMatch[0]);
-                      if (nestedError.message) {
-                        logMessage = nestedError.message;
-                        console.log(`Extracted nested error message: ${logMessage}`);
-                        
-                        // Check for captcha-related errors
-                        if (nestedError.message.toLowerCase().includes('captcha recharge') || 
-                            nestedError.message.toLowerCase().includes('captcha limit') ||
-                            nestedError.errorCode === 'CAPTCHA_LIMIT') {
-                          captchaErrorOccurred = true
-                          captchaErrorMessage = nestedError.message
-                          console.log('CAPTCHA ERROR DETECTED - Stopping further processing')
-                        }
-                      }
-                      if (nestedError.errorCode) {
-                        console.log(`Error code: ${nestedError.errorCode}`);
-                      }
-                    }
-                  } catch (parseError) {
-                    console.log('Failed to parse nested error:', parseError);
-                  }
-                }
-              } else if (webhookResult.error && webhookResult.error.name) {
-                logMessage = webhookResult.error.name
-              } else if (webhookResult.result) {
-                logMessage = webhookResult.result
-              } else if (webhookResult.status) {
-                logMessage = webhookResult.status
-              } else if (webhookResult.data) {
-                logMessage = JSON.stringify(webhookResult.data)
-              } else {
-                // If the response structure doesn't match expected format, log the full response
-                logMessage = JSON.stringify(webhookResult)
+                logMessage = `External webhook: ${webhookResult.message}`
               }
-            } catch (jsonError) {
-              console.log(`JSON parse error for row ${i}:`, jsonError)
-              // If not JSON, use the raw response text
-              logMessage = responseText || "Success"
+              
+            } catch (parseError) {
+              console.log(`External webhook response for row ${i} is not JSON, treating as plain text`)
+              webhookResult = { message: responseText }
+              logMessage = `External webhook: ${responseText}`
             }
             
-            // Log webhook success response with n8n format
+            // Log successful processing
             const successLog = {
               "Client Name": clientName,
-              "status": webhookResult?.status || webhookResponse.status,
+              "status": "success",
               "message": logMessage,
-              "webhook_response": responseText, // Include raw response for debugging
-              "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email",
-              "n8n_response": webhookResult // Include parsed n8n response
+              "automation_data": automationResult,
+              "webhook_response": webhookResult
             }
-            console.log('Webhook Success Log:', JSON.stringify(successLog, null, 2))
-            console.log(`Row ${i} sent successfully to webhook. Response:`, responseText)
+            console.log('Success Log:', JSON.stringify(successLog, null, 2))
             
             // Save success log to file
             saveLogToFile(successLog)
             
           } catch (parseError) {
-            console.log(`Row ${i} - Error processing webhook response:`, parseError)
+            console.log(`Row ${i} - Error processing external webhook response:`, parseError)
             
             // Save basic success log with error info
             const basicSuccessLog = {
               "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
               "status": webhookResponse.status,
-              "message": `Success - Response processing error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-              "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email"
+              "message": `Success - External webhook response processing error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+              "webhook_url": "https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email",
+              "automation_data": automationResult
             }
             saveLogToFile(basicSuccessLog)
           }
@@ -444,35 +538,70 @@ export async function POST(request: Request) {
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        console.error(`Error sending row ${i} to webhook:`, errorMessage)
+        console.error(`Error processing row ${i}:`, errorMessage)
         console.error(`Full error details:`, error)
         
-        // Log error in specified format with more context
+        // Determine which step failed based on error details
+        let failedStep = 'unknown'
+        let errorUrl = 'unknown'
+        
+        if (errorMessage.includes('localhost:3001') || errorMessage.includes('automation')) {
+          failedStep = 'local_automation'
+          errorUrl = 'http://localhost:3001/api/gstr2b-automation'
+        } else if (errorMessage.includes('webhook') || errorMessage.includes('n8nautonerve')) {
+          failedStep = 'external_webhook'
+          errorUrl = 'https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email'
+        }
+        
+        // Categorize error types
+        let errorType = 'general_error'
+        if (errorMessage.includes('aborted') || errorMessage.includes('timeout')) {
+          errorType = 'timeout_error'
+        } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
+          errorType = 'connection_error'
+        } else if (errorMessage.includes('fetch')) {
+          errorType = 'network_error'
+        }
+        
+        // Log error in specified format with comprehensive context
         const errorLog = {
           "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
           "status": 500, // Internal error status
-          "message": errorMessage,
-          "webhook_url": "http://127.0.0.1:5678/webhook/gstr2b-email",
-          "error_type": error instanceof Error ? error.constructor.name : 'Unknown',
+          "message": `${failedStep} failed: ${errorMessage}`,
+          "step": failedStep,
+          "error_type": errorType,
           "error_details": {
-            "full_error": error instanceof Error ? error.stack : String(error)
-          }
+            "error_message": errorMessage,
+            "error_name": error instanceof Error ? error.constructor.name : 'Unknown',
+            "error_stack": error instanceof Error ? error.stack : String(error),
+            "automation_payload": failedStep === 'local_automation' ? automationPayload : undefined
+          },
+          "target_url": errorUrl
         }
-        console.log('Webhook Error Log:', JSON.stringify(errorLog, null, 2))
+        console.log('Processing Error Log:', JSON.stringify(errorLog, null, 2))
         
         // Save error log to file
         saveLogToFile(errorLog)
         
-        if (errorMessage.includes('aborted') || errorMessage.includes('timeout')) {
-          errors.push(`Row ${i}: Request timeout - GSTR-2B automation took longer than 3 minutes`)
-        } else if (errorMessage.includes('ECONNREFUSED')) {
-          errors.push(`Row ${i}: n8n server not reachable`)
+        // Add user-friendly error messages
+        if (errorType === 'timeout_error') {
+          if (failedStep === 'local_automation') {
+            errors.push(`Row ${i}: Local automation timeout - Process took longer than 5 minutes`)
+          } else {
+            errors.push(`Row ${i}: External webhook timeout - Request took longer than 3 minutes`)
+          }
+        } else if (errorType === 'connection_error') {
+          if (failedStep === 'local_automation') {
+            errors.push(`Row ${i}: Cannot connect to local automation server (http://localhost:3001)`)
+          } else {
+            errors.push(`Row ${i}: Cannot connect to external webhook server`)
+          }
         } else {
           errors.push(`Row ${i}: ${errorMessage}`)
         }
       }
 
-      // Small delay to avoid overwhelming the webhook
+      // Small delay to avoid overwhelming the servers
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 

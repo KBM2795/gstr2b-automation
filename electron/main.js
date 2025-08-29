@@ -2,11 +2,11 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const ElectronAPI = require('./api-server')
-const N8nServer = require('./n8n-server')
 const { GSTR2BAutomationServer } = require('./gstr2b-automation-server')
 const FirstRunSetup = require('./first-run-setup')
 const AutoUpdater = require('./updater')
-const isDev = process.env.NODE_ENV === 'development'
+const isDev = !app.isPackaged // Better way to check if in development
+const isElectronDev = process.env.ELECTRON_IS_DEV === 'true'
 
 // Suppress Chromium warnings and errors
 app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor')
@@ -17,7 +17,6 @@ app.commandLine.appendSwitch('--no-sandbox')
 
 let mainWindow
 let apiServer
-let n8nServer
 let gstr2bAutomationServer
 let firstRunSetup
 let autoUpdater
@@ -87,9 +86,12 @@ function createWindow() {
   })
 
   // Load the Next.js app
-  const startUrl = isDev 
-    ? 'http://localhost:3001' // Changed to port 3001
-    : `file://${path.join(__dirname, '../out/index.html')}`
+  const startUrl = isDev || isElectronDev
+    ? 'http://localhost:3001' // Development server
+    : `file://${path.join(__dirname, '../out/index.html')}` // Production build
+  
+  console.log('Loading URL:', startUrl)
+  console.log('Is Development:', isDev || isElectronDev)
   
   mainWindow.loadURL(startUrl)
 
@@ -97,11 +99,11 @@ function createWindow() {
     mainWindow.show()
     
     // Initialize auto-updater after window is ready (only in production)
-    if (!isDev) {
+    if (!isDev && !isElectronDev) {
       initializeAutoUpdater()
     }
     
-    if (isDev) {
+    if (isDev || isElectronDev) {
       mainWindow.webContents.openDevTools()
       
       // Suppress autofill warnings in DevTools
@@ -216,103 +218,9 @@ ipcMain.handle('storage:deleteLocation', async (event, id) => {
   return false
 })
 
-// Handle n8n operations
-ipcMain.handle('n8n:getStatus', async () => {
-  if (n8nServer) {
-    return n8nServer.getStatus()
-  }
-  return { isRunning: false }
-})
-
-ipcMain.handle('n8n:createWorkflow', async () => {
-  try {
-    if (!n8nServer) {
-      // Try to initialize n8nServer if it doesn't exist
-      console.log('n8nServer not initialized, attempting to create...')
-      n8nServer = new N8nServer(configPath)
-    }
-    
-    const result = await n8nServer.createGSTR2BWorkflow()
-    console.log('Create workflow result:', result)
-    return result
-  } catch (error) {
-    console.error('Failed to create workflow:', error)
-    return {
-      success: false,
-      error: `Failed to create workflow: ${error.message}`,
-      details: error.stack
-    }
-  }
-})
-
-// IPC handler for injecting workflow directly into n8n
-ipcMain.handle('n8n:injectWorkflow', async () => {
-  try {
-    if (!n8nServer) {
-      console.log('n8nServer not initialized, attempting to create...')
-      n8nServer = new N8nServer(configPath)
-    }
-    
-    const result = await n8nServer.injectWorkflowToN8n()
-    console.log('Inject workflow result:', result)
-    return result
-  } catch (error) {
-    console.error('Failed to inject workflow:', error)
-    return {
-      success: false,
-      error: `Failed to inject workflow: ${error.message}`,
-      details: error.stack
-    }
-  }
-})
-
-// IPC handler for creating workflow from custom JSON
-ipcMain.handle('n8n:createWorkflowFromJSON', async (event, workflowJSON) => {
-  try {
-    if (!n8nServer) {
-      console.log('n8nServer not initialized, attempting to create...')
-      n8nServer = new N8nServer(configPath)
-    }
-    
-    const result = await n8nServer.createWorkflowFromJSON(workflowJSON)
-    console.log('Create workflow from JSON result:', result)
-    return result
-  } catch (error) {
-    console.error('Failed to create workflow from JSON:', error)
-    return {
-      success: false,
-      error: `Failed to create workflow from JSON: ${error.message}`,
-      details: error.stack
-    }
-  }
-})
-
-// IPC handler for starting n8n
-ipcMain.handle('n8n:start', async () => {
-  try {
-    if (!n8nServer) {
-      n8nServer = new N8nServer(configPath)
-    }
-    const result = await n8nServer.start()
-    return { success: true, ...result }
-  } catch (error) {
-    console.error('Failed to start n8n:', error)
-    return { success: false, error: error.message }
-  }
-})
-
-// IPC handler for stopping n8n
-ipcMain.handle('n8n:stop', async () => {
-  try {
-    if (n8nServer) {
-      await n8nServer.stop()
-      return { success: true }
-    }
-    return { success: true, message: 'n8n was not running' }
-  } catch (error) {
-    console.error('Failed to stop n8n:', error)
-    return { success: false, error: error.message }
-  }
+// Handle automation operations
+ipcMain.handle('automation:getStatus', async () => {
+  return { isRunning: false, message: 'Direct automation without n8n' }
 })
 
 // IPC handler for opening external URLs
@@ -457,7 +365,7 @@ ipcMain.handle('logs:clearFile', async (event, date, options = {}) => {
 
 // Auto-updater IPC handlers
 ipcMain.handle('updater:check', async () => {
-  if (autoUpdater && !isDev) {
+  if (autoUpdater && !isDev && !isElectronDev) {
     autoUpdater.checkForUpdates()
     return { success: true, message: 'Checking for updates...' }
   } else {
@@ -466,7 +374,7 @@ ipcMain.handle('updater:check', async () => {
 })
 
 ipcMain.handle('updater:download', async () => {
-  if (autoUpdater && !isDev) {
+  if (autoUpdater && !isDev && !isElectronDev) {
     autoUpdater.downloadUpdate()
     return { success: true, message: 'Starting update download...' }
   } else {
@@ -475,7 +383,7 @@ ipcMain.handle('updater:download', async () => {
 })
 
 ipcMain.handle('updater:install', async () => {
-  if (autoUpdater && !isDev) {
+  if (autoUpdater && !isDev && !isElectronDev) {
     autoUpdater.installUpdate()
     return { success: true, message: 'Installing update and restarting...' }
   } else {
@@ -552,21 +460,6 @@ app.whenReady().then(async () => {
   } catch (error) {
     console.error('Failed to start GSTR-2B automation server:', error)
   }
-
-  // Start n8n server
-  try {
-    n8nServer = new N8nServer(configPath)
-    const n8nInfo = await n8nServer.start()
-    if (n8nInfo.error) {
-      console.log('n8n server failed to start, continuing without workflow automation:', n8nInfo.error)
-    } else {
-      console.log('n8n server started successfully:', n8nInfo)
-    }
-  } catch (error) {
-    console.log('n8n server is unavailable, continuing without workflow automation:', error.message)
-    // Don't let n8n failure block the app
-    n8nServer = null
-  }
 })
 
 app.on('window-all-closed', async () => {
@@ -596,15 +489,6 @@ app.on('window-all-closed', async () => {
     console.log('Auto-updater stopped')
   }
   
-  if (n8nServer) {
-    try {
-      await n8nServer.stop()
-      console.log('n8n server stopped successfully')
-    } catch (error) {
-      console.error('Failed to stop n8n server:', error)
-    }
-  }
-  
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -621,17 +505,6 @@ app.on('before-quit', async (event) => {
       console.log('GSTR-2B automation server stopped on quit')
     } catch (error) {
       console.error('Failed to stop GSTR-2B automation on quit:', error)
-    }
-  }
-  
-  if (n8nServer && n8nServer.isRunning) {
-    event.preventDefault()
-    
-    try {
-      await n8nServer.stop()
-      console.log('n8n server stopped on quit')
-    } catch (error) {
-      console.error('Failed to stop n8n on quit:', error)
     }
     
     // Allow the app to quit after cleanup

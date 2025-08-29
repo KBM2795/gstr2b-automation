@@ -24,14 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => require('electron').remote?.app.getVersion() || '1.0.0',
   getAppPath: () => ipcRenderer.invoke('app:getPath'),
   
-  // n8n methods
-  getN8nStatus: () => ipcRenderer.invoke('n8n:getStatus'),
-  createN8nWorkflow: () => ipcRenderer.invoke('n8n:createWorkflow'),
-  injectN8nWorkflow: () => ipcRenderer.invoke('n8n:injectWorkflow'),
-  createN8nWorkflowFromJSON: (workflowJSON) => ipcRenderer.invoke('n8n:createWorkflowFromJSON', workflowJSON),
-  startN8n: () => ipcRenderer.invoke('n8n:start'),
-  stopN8n: () => ipcRenderer.invoke('n8n:stop'),
-  
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   

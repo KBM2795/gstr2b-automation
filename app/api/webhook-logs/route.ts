@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
+// Force Node.js runtime to avoid infinite redirects in Electron/production
+export const runtime = 'nodejs'
+
 // POST endpoint to log webhook responses
 export async function POST(request: NextRequest) {
   try {

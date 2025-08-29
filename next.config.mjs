@@ -1,9 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // output: 'export',
   trailingSlash: true,
   skipTrailingSlashRedirect: true,
   distDir: 'out',
+  assetPrefix: process.env.NODE_ENV === 'production' ? './' : '',
   experimental: {
     missingSuspenseWithCSRBailout: false,
   },
@@ -15,6 +16,9 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+  },
+  env: {
+    ELECTRON_IS_DEV: process.env.ELECTRON_IS_DEV,
   },
 }
 

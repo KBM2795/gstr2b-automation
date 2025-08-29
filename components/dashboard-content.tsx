@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { N8nIntegration } from "@/components/n8n-integration"
+
 import { GSTR2BAutomation } from "@/components/gstr2b-automation"
 import { SetupStatusCard } from "@/components/setup-status-card"
 import { FileSpreadsheet, FolderOpen, Calculator, FileText, Download, Square } from "lucide-react"
@@ -336,9 +336,6 @@ export function DashboardContent({ config }: DashboardContentProps) {
           )}
         </CardContent>
       </Card>
-
-      {/* n8n Workflow Integration */}
-      <N8nIntegration />
         </div>
       )}
 

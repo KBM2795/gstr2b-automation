@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addLocation, getLocations, initDB } from '@/lib/location-db';
 
+// Force Node.js runtime to avoid fetch errors in Electron/production
+export const runtime = 'nodejs';
+
 export async function GET() {
 	try {
 		const locations = await getLocations();

@@ -64,40 +64,6 @@ class ProcessManager {
       }
     })
   }
-
-  static async killN8nProcesses() {
-    console.log('Cleaning up any remaining n8n processes...')
-    
-    // Kill process on n8n port
-    await this.killProcessOnPort(5678)
-    
-    // Also try to kill any node processes that might be n8n
-    if (process.platform === 'win32') {
-      return new Promise((resolve) => {
-        const tasklist = spawn('tasklist', ['/FI', 'IMAGENAME eq node.exe', '/FO', 'CSV'])
-        let output = ''
-
-        tasklist.stdout.on('data', (data) => {
-          output += data.toString()
-        })
-
-        tasklist.on('close', () => {
-          const lines = output.split('\n')
-          const n8nProcesses = lines.filter(line => 
-            line.includes('node.exe') && line.includes('n8n')
-          )
-
-          if (n8nProcesses.length > 0) {
-            console.log(`Found ${n8nProcesses.length} n8n processes to clean up`)
-            // Kill them one by one
-            // This is a simplified approach - in production you'd want more careful PID extraction
-          }
-          
-          resolve()
-        })
-      })
-    }
-  }
 }
 
 module.exports = ProcessManager
