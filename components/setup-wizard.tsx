@@ -149,8 +149,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <Input
                 id="excel-path"
                 value={excelPath}
-                placeholder="Click browse to select Excel file (full path will be saved)..."
-                readOnly
+                onChange={(e) => setExcelPath(e.target.value)}
+                placeholder="Enter Excel file path or click browse..."
                 className="flex-1 font-mono text-sm"
               />
               <Button variant="outline" size="icon" onClick={() => handleFileSelect("excel")} className="shrink-0">
@@ -167,8 +167,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <Input
                 id="storage-path"
                 value={storagePath}
-                placeholder="Click browse to select storage folder (full path will be saved)..."
-                readOnly
+                onChange={(e) => setStoragePath(e.target.value)}
+                placeholder="Enter storage folder path or click browse..."
                 className="flex-1 font-mono text-sm"
               />
               <Button variant="outline" size="icon" onClick={() => handleFileSelect("storage")} className="shrink-0">

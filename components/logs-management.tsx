@@ -65,6 +65,13 @@ export function LogsManagement() {
   const testAPIConnection = async () => {
     try {
       console.log('Testing API connection...')
+      
+      // Check if we're in Electron environment first
+      if (typeof window !== 'undefined' && (window as any).electronAPI) {
+        console.log('Running in Electron environment, skipping API test')
+        return
+      }
+      
       const response = await fetch('/api/webhook-logs')
       console.log('API test response status:', response.status)
       console.log('API test response headers:', Object.fromEntries(response.headers.entries()))
@@ -96,7 +103,34 @@ export function LogsManagement() {
     console.log('Fetching logs for date:', selectedDate)
     
     try {
-      // Try Next.js API first
+      // Check if we're in Electron environment first and prioritize Electron API
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.readLogFile) {
+        console.log('Using Electron API for log fetching')
+        try {
+          const result = await window.electronAPI.readLogFile(selectedDate)
+          if (result.success) {
+            setLogs(result.logs || [])
+            setSelectedLogs(new Set())
+            if ((result.logs || []).length === 0) {
+              setMessage(`No logs found for ${selectedDate}`)
+            } else {
+              setMessage(`Loaded ${result.logs?.length} logs via Electron API`)
+            }
+            setIsLoading(false)
+            return
+          } else {
+            setMessage(`Electron API error: ${result.message}`)
+            setLogs([])
+            setIsLoading(false)
+            return
+          }
+        } catch (electronError) {
+          console.error('Electron API failed, trying Next.js API...', electronError)
+          // Fall through to Next.js API
+        }
+      }
+      
+      // Try Next.js API as fallback or primary (for web environment)
       const apiUrl = `/api/webhook-logs?date=${selectedDate}`
       console.log('API request URL:', apiUrl)
       
@@ -131,54 +165,21 @@ export function LogsManagement() {
         setLogs([])
       }
     } catch (error) {
-      console.error('Next.js API failed, trying Electron API...', error)
+      console.error('All APIs failed:', error)
       
-      // Fallback to Electron API
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.readLogFile) {
-        try {
-          const result = await window.electronAPI.readLogFile(selectedDate)
-          if (result.success) {
-            setLogs(result.logs || [])
-            setSelectedLogs(new Set())
-            if ((result.logs || []).length === 0) {
-              setMessage(`No logs found for ${selectedDate}`)
-            } else {
-              setMessage(`Loaded ${result.logs?.length} logs via Electron API`)
-            }
-          } else {
-            setMessage(`Electron API error: ${result.message}`)
-            setLogs([])
-          }
-        } catch (electronError) {
-          console.error('Electron API also failed:', electronError)
-          if (error instanceof Error) {
-            if (error.message.includes('SyntaxError') || error.message.includes('Unexpected token')) {
-              setMessage('API endpoint not available. Logs may still be saved to files in the background.')
-            } else if (error.message.includes('Failed to fetch')) {
-              setMessage('Cannot connect to API server. Please check if the app is running properly.')
-            } else {
-              setMessage(`Failed to fetch logs: ${error.message}`)
-            }
-          } else {
-            setMessage('Unknown error occurred while fetching logs')
-          }
-          setLogs([])
+      // Handle errors gracefully
+      if (error instanceof Error) {
+        if (error.message.includes('SyntaxError') || error.message.includes('Unexpected token')) {
+          setMessage('API endpoint not available. Logs may still be saved to files in the background.')
+        } else if (error.message.includes('Failed to fetch')) {
+          setMessage('Cannot connect to API server. Please check if the app is running properly.')
+        } else {
+          setMessage(`Failed to fetch logs: ${error.message}`)
         }
       } else {
-        // No fallback available
-        if (error instanceof Error) {
-          if (error.message.includes('SyntaxError') || error.message.includes('Unexpected token')) {
-            setMessage('API endpoint not available. Make sure the Next.js dev server is running on port 3001.')
-          } else if (error.message.includes('Failed to fetch')) {
-            setMessage('Cannot connect to API server. Please check if the app is running properly.')
-          } else {
-            setMessage(`Failed to fetch logs: ${error.message}`)
-          }
-        } else {
-          setMessage('Unknown error occurred while fetching logs')
-        }
-        setLogs([])
+        setMessage('Unknown error occurred while fetching logs')
       }
+      setLogs([])
     } finally {
       setIsLoading(false)
     }
@@ -193,7 +194,29 @@ export function LogsManagement() {
     setMessage('')
 
     try {
-      // Try Next.js API first
+      // Check if we're in Electron environment first and prioritize Electron API
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.clearLogFile) {
+        console.log('Using Electron API for clearing logs')
+        try {
+          const result = await window.electronAPI.clearLogFile(selectedDate, { all: true })
+          if (result.success) {
+            setMessage(`All logs cleared for ${selectedDate} (via Electron API)`)
+            setLogs([])
+            setSelectedLogs(new Set())
+            setIsLoading(false)
+            return
+          } else {
+            setMessage(`Electron API error: ${result.message}`)
+            setIsLoading(false)
+            return
+          }
+        } catch (electronError) {
+          console.error('Electron API failed, trying Next.js API...', electronError)
+          // Fall through to Next.js API
+        }
+      }
+      
+      // Try Next.js API as fallback or primary (for web environment)
       const response = await fetch(`/api/webhook-logs?date=${selectedDate}&all=true`, {
         method: 'DELETE'
       })
@@ -217,30 +240,11 @@ export function LogsManagement() {
         setMessage(`Error clearing logs: ${data.message}`)
       }
     } catch (error) {
-      console.error('Next.js API failed, trying Electron API...', error)
-      
-      // Fallback to Electron API
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.clearLogFile) {
-        try {
-          const result = await window.electronAPI.clearLogFile(selectedDate, { all: true })
-          if (result.success) {
-            setMessage(`All logs cleared for ${selectedDate} (via Electron API)`)
-            setLogs([])
-            setSelectedLogs(new Set())
-          } else {
-            setMessage(`Electron API error: ${result.message}`)
-          }
-        } catch (electronError) {
-          console.error('Electron API also failed:', electronError)
-          setMessage(`Failed to clear logs: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        }
+      console.error('All APIs failed:', error)
+      if (error instanceof Error) {
+        setMessage(`Failed to clear logs: ${error.message}`)
       } else {
-        console.error('Clear all logs error:', error)
-        if (error instanceof Error) {
-          setMessage(`Failed to clear logs: ${error.message}`)
-        } else {
-          setMessage('Unknown error occurred while clearing logs')
-        }
+        setMessage('Unknown error occurred while clearing logs')
       }
     } finally {
       setIsLoading(false)
@@ -261,7 +265,29 @@ export function LogsManagement() {
     setMessage('')
 
     try {
-      // Try Next.js API first
+      // Check if we're in Electron environment first and prioritize Electron API
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.clearLogFile) {
+        console.log('Using Electron API for clearing selected logs')
+        try {
+          const logIds = Array.from(selectedLogs)
+          const result = await window.electronAPI.clearLogFile(selectedDate, { ids: logIds })
+          if (result.success) {
+            setMessage(`Deleted ${selectedLogs.size} log(s) (via Electron API)`)
+            await fetchLogs() // Refresh logs
+            setIsLoading(false)
+            return
+          } else {
+            setMessage(`Electron API error: ${result.message}`)
+            setIsLoading(false)
+            return
+          }
+        } catch (electronError) {
+          console.error('Electron API failed, trying Next.js API...', electronError)
+          // Fall through to Next.js API
+        }
+      }
+      
+      // Try Next.js API as fallback or primary (for web environment)
       const logIds = Array.from(selectedLogs).join(',')
       const response = await fetch(`/api/webhook-logs?date=${selectedDate}&ids=${logIds}`, {
         method: 'DELETE'
@@ -285,30 +311,11 @@ export function LogsManagement() {
         setMessage(`Error deleting logs: ${data.message}`)
       }
     } catch (error) {
-      console.error('Next.js API failed, trying Electron API...', error)
-      
-      // Fallback to Electron API
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.clearLogFile) {
-        try {
-          const logIds = Array.from(selectedLogs)
-          const result = await window.electronAPI.clearLogFile(selectedDate, { ids: logIds })
-          if (result.success) {
-            setMessage(`Deleted ${selectedLogs.size} log(s) (via Electron API)`)
-            await fetchLogs() // Refresh logs
-          } else {
-            setMessage(`Electron API error: ${result.message}`)
-          }
-        } catch (electronError) {
-          console.error('Electron API also failed:', electronError)
-          setMessage(`Failed to delete logs: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        }
+      console.error('All APIs failed:', error)
+      if (error instanceof Error) {
+        setMessage(`Failed to delete logs: ${error.message}`)
       } else {
-        console.error('Clear selected logs error:', error)
-        if (error instanceof Error) {
-          setMessage(`Failed to delete logs: ${error.message}`)
-        } else {
-          setMessage('Unknown error occurred while deleting logs')
-        }
+        setMessage('Unknown error occurred while deleting logs')
       }
     } finally {
       setIsLoading(false)
