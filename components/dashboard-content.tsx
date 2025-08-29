@@ -12,7 +12,7 @@ import { SetupStatusCard } from "@/components/setup-status-card"
 import { FileSpreadsheet, FolderOpen, Calculator, FileText, Download, Square } from "lucide-react"
 
 interface DashboardContentProps {
-  config: { excelPath: string; storagePath: string }
+  config: { excelPath: string; storagePath: string; webhookUrl: string }
 }
 
 export function DashboardContent({ config }: DashboardContentProps) {

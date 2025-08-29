@@ -35,6 +35,36 @@ export function LogsContent() {
   })
   const itemsPerPage = 10
 
+  // Function to get color based on success rate percentage
+  const getSuccessRateColor = (message: string) => {
+    // Extract percentage from message (e.g., "Success rate: 85.50%")
+    const percentMatch = message.match(/Success rate:\s*(\d+(?:\.\d+)?)%/)
+    if (percentMatch) {
+      const percentage = parseFloat(percentMatch[1])
+      if (percentage === 100) return 'text-green-600'
+      if (percentage >= 50) return 'text-orange-600'
+      return 'text-red-600'
+    }
+    // Default color logic for non-percentage messages
+    return ''
+  }
+
+  // Function to get background color for status badges based on success rate
+  const getSuccessRateBadgeColor = (message: string, status: string) => {
+    const percentMatch = message.match(/Success rate:\s*(\d+(?:\.\d+)?)%/)
+    if (percentMatch) {
+      const percentage = parseFloat(percentMatch[1])
+      if (percentage === 100) return 'bg-green-100 text-green-800'
+      if (percentage >= 50) return 'bg-orange-100 text-orange-800'
+      return 'bg-red-100 text-red-800'
+    }
+    // Default color logic for non-percentage messages
+    if (status === "success" || status === "started" || status === "completed") {
+      return 'bg-green-100 text-green-800'
+    }
+    return 'bg-red-100 text-red-800'
+  }
+
   // Delete activity log function
   const deleteActivityLog = async (logId: string) => {
     if (!window.confirm('Are you sure you want to delete this activity log? This action cannot be undone.')) {
@@ -245,17 +275,13 @@ export function LogsContent() {
                             ) : (
                               <XCircle className="h-4 w-4 text-red-600" />
                             )}
-                            <span className={`text-sm font-medium ${
-                              log.status === "success" || log.status === "started" || log.status === "completed"
-                                ? "text-green-700" 
-                                : "text-red-700"
-                            }`}>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSuccessRateBadgeColor(log.message, log.status)}`}>
                               {log.status}
                             </span>
                           </div>
                         </TableCell>
                         <TableCell className="max-w-md">
-                          <div className="truncate" title={log.message}>
+                          <div className={`truncate ${getSuccessRateColor(log.message)}`} title={log.message}>
                             {log.message}
                           </div>
                         </TableCell>

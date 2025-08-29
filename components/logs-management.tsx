@@ -333,18 +333,24 @@ export function LogsManagement() {
     }
   }
 
-  const getStatusColor = (status: number) => {
-    if (status >= 200 && status < 300) return 'text-green-600'
-    if (status >= 400 && status < 500) return 'text-red-600'
-    if (status >= 500) return 'text-red-800'
+  const getStatusColor = (status: number | string) => {
+    if (status === "success") return 'text-green-600'
+    const numStatus = typeof status === 'string' ? parseInt(status) : status
+    if (isNaN(numStatus)) return 'text-gray-600' // Handle non-numeric strings
+    if (numStatus >= 200 && numStatus < 300) return 'text-green-600'
+    if (numStatus >= 400 && numStatus < 500) return 'text-red-600'
+    if (numStatus >= 500) return 'text-red-800'
     return 'text-gray-600'
   }
 
-  const getStatusBadge = (status: number) => {
+  const getStatusBadge = (status: number | string) => {
     const baseClasses = 'px-2 py-1 rounded-full text-xs font-medium'
-    if (status >= 200 && status < 300) return `${baseClasses} bg-green-100 text-green-800`
-    if (status >= 400 && status < 500) return `${baseClasses} bg-red-100 text-red-800`
-    if (status >= 500) return `${baseClasses} bg-red-100 text-red-900`
+    if (status === "success") return `${baseClasses} bg-green-100 text-green-800`
+    const numStatus = typeof status === 'string' ? parseInt(status) : status
+    if (isNaN(numStatus)) return `${baseClasses} bg-gray-100 text-gray-800` // Handle non-numeric strings
+    if (numStatus >= 200 && numStatus < 300) return `${baseClasses} bg-green-100 text-green-800`
+    if (numStatus >= 400 && numStatus < 500) return `${baseClasses} bg-red-100 text-red-800`
+    if (numStatus >= 500) return `${baseClasses} bg-red-100 text-red-900`
     return `${baseClasses} bg-gray-100 text-gray-800`
   }
 
