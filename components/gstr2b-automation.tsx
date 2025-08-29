@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, Eye, EyeOff, AlertCircle, CheckCircle, Clock } from "lucide-react"
+import { Download, Eye, EyeOff, AlertCircle, CheckCircle, Clock, Square } from "lucide-react"
 
 interface GSTR2BAutomationProps {
   config: { excelPath: string; storagePath: string }
@@ -25,6 +25,7 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [result, setResult] = useState<any>(null)
+  const [canStop, setCanStop] = useState(false)
 
   // Financial year options
   const financialYears = [
@@ -89,6 +90,7 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
     }
 
     setIsProcessing(true)
+    setCanStop(true) // Enable stop functionality
     setResult(null)
 
     try {
@@ -115,6 +117,41 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
       })
     } finally {
       setIsProcessing(false)
+      setCanStop(false) // Disable stop functionality
+    }
+  }
+
+  const handleStop = async () => {
+    if (!window.confirm('Are you sure you want to stop the GSTR-2B automation process? This may leave the process in an incomplete state.')) {
+      return
+    }
+
+    try {
+      // Call stop API
+      const response = await fetch('/api/gstr2b-automation/stop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      const data = await response.json()
+      
+      setResult({
+        success: false,
+        message: 'Automation process has been stopped by user',
+        data: data
+      })
+
+      setIsProcessing(false)
+      setCanStop(false)
+
+    } catch (error) {
+      console.error('Failed to stop automation:', error)
+      setResult({
+        success: false,
+        message: 'Failed to stop automation process. Please try again.'
+      })
     }
   }
 
@@ -271,17 +308,39 @@ export function GSTR2BAutomation({ config }: GSTR2BAutomationProps) {
             </p>
           </div>
 
-          {/* Submit Button */}
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isProcessing}
-          >
-            <div className="flex items-center gap-2">
-              {getStatusIcon()}
-              {isProcessing ? 'Downloading GSTR-2B...' : 'Download GSTR-2B'}
-            </div>
-          </Button>
+          {/* Submit/Stop Buttons */}
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              className="flex-1"
+              disabled={isProcessing}
+            >
+              <div className="flex items-center gap-2">
+                {getStatusIcon()}
+                {isProcessing ? 'Downloading GSTR-2B...' : 'Download GSTR-2B'}
+              </div>
+            </Button>
+            
+            {isProcessing && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="default"
+                onClick={handleStop}
+                className="px-4"
+                title="Stop automation process"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            )}
+            
+            {/* Debug info - remove in production */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="text-xs text-muted-foreground mt-2">
+                Debug: isProcessing={isProcessing.toString()}, canStop={canStop.toString()}
+              </div>
+            )}
+          </div>
 
           {/* Result Display */}
           {result && (

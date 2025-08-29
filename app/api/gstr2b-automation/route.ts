@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs'
 import { config } from 'process'
+import { setAutomationProcess } from './stop/route'
 
 // GET endpoint for testing
 export async function GET() {
@@ -188,11 +189,25 @@ export async function POST(request: NextRequest) {
     console.log('- Using absolute storage path:', absoluteStoragePath)
 
     // Call the GSTR-2B automation server
+    console.log('Starting GSTR-2B automation process...')
+    
+    // Create an AbortController to track and potentially stop the process
+    const abortController = new AbortController()
+    
+    // Track the automation process for stopping
+    setAutomationProcess({
+      signal: abortController.signal,
+      abort: () => abortController.abort(),
+      timestamp: new Date().toISOString(),
+      status: 'running'
+    })
+
     const automationResponse = await fetch('http://localhost:3003/gstr2b', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: abortController.signal, // Add abort signal
       body: JSON.stringify({
         username,
         password,
@@ -209,6 +224,10 @@ export async function POST(request: NextRequest) {
 
     if (!automationResponse.ok) {
       const errorData = await automationResponse.json().catch(() => ({}))
+      
+      // Clear the automation process reference
+      setAutomationProcess(null)
+      
       return NextResponse.json({
         success: false,
         error: 'Automation server error',
@@ -220,6 +239,9 @@ export async function POST(request: NextRequest) {
     const result = await automationResponse.json()
 
     if (!result.success) {
+      // Clear the automation process reference
+      setAutomationProcess(null)
+      
       return NextResponse.json({
         success: false,
         message: result.error || 'Download failed',
@@ -233,6 +255,10 @@ export async function POST(request: NextRequest) {
 
     // The automation server already saves the file to the correct location with proper folder structure
     // No need to reorganize the file here since it's already in the right place
+    
+    // Clear the automation process reference
+    setAutomationProcess(null)
+    
     return NextResponse.json({
       success: true,
       message: 'GSTR-2B downloaded and organized successfully',
@@ -252,6 +278,19 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('GSTR-2B automation API error:', error)
+    
+    // Clear the automation process reference on error
+    setAutomationProcess(null)
+    
+    // Check if error is due to abort (user stopped)
+    if (error instanceof Error && error.name === 'AbortError') {
+      return NextResponse.json({
+        success: false,
+        error: 'Process stopped by user',
+        message: 'GSTR-2B automation was stopped by user request'
+      }, { status: 499 }) // 499 Client Closed Request
+    }
+    
     return NextResponse.json({
       success: false,
       error: 'Internal server error',

@@ -13,6 +13,8 @@
     "electron-dev": "node electron-dev.js",
     "build-electron": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never",
+    "publish": "npm run build && electron-builder --publish=always",
+    "release": "npm run build && electron-builder --publish=always",
     "n8n": "n8n start --tunnel",
     "n8n:standalone": "set N8N_PORT=5678 && set N8N_HOST=127.0.0.1 && set N8N_BASIC_AUTH_ACTIVE=false && n8n start"
   },
@@ -90,6 +92,8 @@
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
     "electron": "^37.3.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
@@ -107,14 +111,34 @@
       "electron/**/*",
       "node_modules/**/*"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "KBM2795",
+        "repo": "gstr2b-automation",
+        "private": false,
+        "releaseType": "release"
+      }
+    ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "icon": "electron/assets/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "electron/assets/icon.ico",
+      "publisherName": "Your Company Name"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "electron/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GSTR2B Automation"
     }
   }
 }
