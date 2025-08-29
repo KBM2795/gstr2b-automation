@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAutomationProcess, clearAutomationProcess } from '@/lib/automation-process'
 
-// Global variable to track automation process
-let automationProcess: any = null
-
-// Function to set the automation process (called from main automation route)
-export function setAutomationProcess(process: any) {
-  automationProcess = process
-}
-
-// Function to get the automation process (for other modules to access)
-export function getAutomationProcess() {
-  return automationProcess
-}
+// Force Node.js runtime to avoid fetch errors in Electron/production
+export const runtime = 'nodejs'
 
 // POST endpoint to stop the automation
 export async function POST(request: NextRequest) {
@@ -19,6 +10,7 @@ export async function POST(request: NextRequest) {
     console.log('Stop automation request received')
 
     // Check if automation is running
+    const automationProcess = getAutomationProcess()
     if (!automationProcess) {
       return NextResponse.json({
         success: false,
@@ -40,7 +32,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Clear the process reference
-      automationProcess = null
+      clearAutomationProcess()
 
       return NextResponse.json({
         success: true,
@@ -53,7 +45,7 @@ export async function POST(request: NextRequest) {
       console.error('Error stopping automation process:', abortError)
       
       // Clear the process reference anyway
-      automationProcess = null
+      clearAutomationProcess()
 
       return NextResponse.json({
         success: true,
@@ -77,6 +69,7 @@ export async function POST(request: NextRequest) {
 
 // GET endpoint to check if automation is running
 export async function GET() {
+  const automationProcess = getAutomationProcess()
   const isRunning = automationProcess !== null
   
   return NextResponse.json({

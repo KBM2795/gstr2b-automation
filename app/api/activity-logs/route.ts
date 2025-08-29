@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
+// Force Node.js runtime to avoid fetch errors in Electron/production
+export const runtime = 'nodejs'
+
 // GET endpoint to retrieve activity logs
 export async function GET(request: NextRequest) {
   try {

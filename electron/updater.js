@@ -20,8 +20,8 @@ class AutoUpdater {
     // Set update server URL (GitHub releases)
     autoUpdater.setFeedURL({
       provider: 'github',
-      owner: 'YOUR_GITHUB_USERNAME', // Replace with your GitHub username
-      repo: 'gstr2b-automation', // Replace with your repo name
+      owner: 'KBM2795', // Your GitHub username
+      repo: 'gstr2b-automation', // Your repo name
       private: false, // Set to true if private repo
       releaseType: 'release' // Use 'prerelease' for beta versions
     })

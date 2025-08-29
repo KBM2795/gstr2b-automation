@@ -76,7 +76,6 @@ NODE_ENV=development
 - **3001**: Next.js development server
 - **3002**: Internal API server (existing)
 - **3003**: GSTR-2B automation server (new)
-- **5678**: n8n workflow server (existing)
 
 ### Server Lifecycle
 - All servers start automatically with the Electron app
@@ -136,7 +135,7 @@ NODE_ENV=development
 ### Integration with Existing Workflow
 - Downloaded files can be immediately processed
 - Seamless integration with existing file processing pipeline
-- Automatic webhook integration with n8n
+- Automatic webhook integration with external services
 
 ## Testing
 

@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs'
 import { config } from 'process'
-import { setAutomationProcess } from './stop/route'
+import { setAutomationProcess, clearAutomationProcess } from '@/lib/automation-process'
+
+// Force Node.js runtime to avoid fetch errors in Electron/production
+export const runtime = 'nodejs'
 
 // GET endpoint for testing
 export async function GET() {
@@ -226,7 +229,7 @@ export async function POST(request: NextRequest) {
       const errorData = await automationResponse.json().catch(() => ({}))
       
       // Clear the automation process reference
-      setAutomationProcess(null)
+      clearAutomationProcess()
       
       return NextResponse.json({
         success: false,
@@ -240,7 +243,7 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       // Clear the automation process reference
-      setAutomationProcess(null)
+      clearAutomationProcess()
       
       return NextResponse.json({
         success: false,
@@ -257,7 +260,7 @@ export async function POST(request: NextRequest) {
     // No need to reorganize the file here since it's already in the right place
     
     // Clear the automation process reference
-    setAutomationProcess(null)
+    clearAutomationProcess()
     
     return NextResponse.json({
       success: true,
@@ -280,7 +283,7 @@ export async function POST(request: NextRequest) {
     console.error('GSTR-2B automation API error:', error)
     
     // Clear the automation process reference on error
-    setAutomationProcess(null)
+    clearAutomationProcess()
     
     // Check if error is due to abort (user stopped)
     if (error instanceof Error && error.name === 'AbortError') {

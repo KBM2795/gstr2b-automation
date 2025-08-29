@@ -10,13 +10,13 @@
     "lint": "next lint",
     "start": "next start",
     "electron": "electron .",
-    "electron-dev": "node electron-dev.js",
+    "electron-dev": "set ELECTRON_IS_DEV=true && electron .",
     "build-electron": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never",
     "publish": "npm run build && electron-builder --publish=always",
     "release": "npm run build && electron-builder --publish=always",
-    "n8n": "n8n start --tunnel",
-    "n8n:standalone": "set N8N_PORT=5678 && set N8N_HOST=127.0.0.1 && set N8N_BASIC_AUTH_ACTIVE=false && n8n start"
+    "pack": "npm run build && electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@antiadmin/anticaptchaofficial": "^1.0.53",
@@ -66,7 +66,6 @@
     "jimp": "^0.22.12",
     "lowdb": "^7.0.1",
     "lucide-react": "^0.454.0",
-    "n8n": "^1.108.1",
     "next": "15.2.4",
     "next-themes": "latest",
     "playwright": "^1.55.0",
@@ -101,15 +100,26 @@
     "wait-on": "^8.0.4"
   },
   "build": {
-    "appId": "com.yourcompany.gstr2b-automation",
+    "appId": "com.kbm2795.gstr2b-automation",
     "productName": "GSTR2B Automation",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
       "electron/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "publish": [
       {
@@ -122,23 +132,50 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "electron/assets/icon.icns"
+      "icon": "electron/assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "electron/assets/icon.ico",
-      "publisherName": "Your Company Name"
+      "publisherName": "KBM2795",
+      "requestedExecutionLevel": "asInvoker"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "electron/assets/icon.png"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/icon.png",
+      "category": "Office"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "GSTR2B Automation"
+      "shortcutName": "GSTR2B Automation",
+      "installerIcon": "electron/assets/icon.ico",
+      "uninstallerIcon": "electron/assets/icon.ico"
     }
   }
 }

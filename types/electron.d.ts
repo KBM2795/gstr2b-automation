@@ -15,12 +15,6 @@ declare global {
       isElectron: () => boolean
       getAppVersion: () => string
       getAppPath: () => Promise<string>
-      getN8nStatus: () => Promise<any>
-      createN8nWorkflow: () => Promise<any>
-      injectN8nWorkflow: () => Promise<any>
-      createN8nWorkflowFromJSON: (workflowJSON: string | object) => Promise<any>
-      startN8n: () => Promise<any>
-      stopN8n: () => Promise<any>
       openExternal: (url: string) => Promise<any>
       getSetupStatus: () => Promise<{
         setupComplete: boolean
