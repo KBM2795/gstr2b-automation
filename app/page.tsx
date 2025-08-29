@@ -8,6 +8,7 @@ import { useAppConfig } from "@/lib/app-context"
 interface AppConfig {
   excelPath: string
   storagePath: string
+  webhookUrl: string
 }
 
 export default function HomePage() {
@@ -15,7 +16,7 @@ export default function HomePage() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoading && config.excelPath && config.storagePath) {
+    if (!isLoading && config.excelPath && config.storagePath && config.webhookUrl) {
       // Redirect to dashboard if setup is complete
       router.push("/dashboard")
     }
@@ -31,7 +32,7 @@ export default function HomePage() {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   }
 
-  if (config.excelPath && config.storagePath) {
+  if (config.excelPath && config.storagePath && config.webhookUrl) {
     return null // Will redirect to dashboard
   }
 

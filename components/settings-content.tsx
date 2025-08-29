@@ -10,13 +10,14 @@ import { FolderOpen, FileSpreadsheet, RotateCcw, Moon, Save } from "lucide-react
 import { useTheme } from "next-themes"
 
 interface SettingsContentProps {
-  config: { excelPath: string; storagePath: string }
-  onConfigUpdate: (config: { excelPath: string; storagePath: string }) => void
+  config: { excelPath: string; storagePath: string; webhookUrl: string }
+  onConfigUpdate: (config: { excelPath: string; storagePath: string; webhookUrl: string }) => void
 }
 
 export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps) {
   const [excelPath, setExcelPath] = useState(config.excelPath)
   const [storagePath, setStoragePath] = useState(config.storagePath)
+  const [webhookUrl, setWebhookUrl] = useState(config.webhookUrl)
   const [isSaving, setIsSaving] = useState(false)
   const [mounted, setMounted] = useState(false)
   const { theme, setTheme } = useTheme()
@@ -28,6 +29,7 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
   useEffect(() => {
     setExcelPath(config.excelPath)
     setStoragePath(config.storagePath)
+    setWebhookUrl(config.webhookUrl)
   }, [config])
 
   const handleFileSelect = async (type: "excel" | "storage") => {
@@ -115,10 +117,16 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: storagePath, type: 'folder' })
           })
+
+          await fetch('http://localhost:3001/api/locations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: webhookUrl, type: 'webhook' })
+          })
         }
       }
 
-      const newConfig = { excelPath, storagePath }
+      const newConfig = { excelPath, storagePath, webhookUrl }
       if (mounted && typeof window !== 'undefined') {
         localStorage.setItem("gstr2bConfig", JSON.stringify(newConfig))
       }
@@ -144,7 +152,8 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
         // Clear local state
         setExcelPath("")
         setStoragePath("")
-        onConfigUpdate({ excelPath: "", storagePath: "" })
+        setWebhookUrl("")
+        onConfigUpdate({ excelPath: "", storagePath: "", webhookUrl: "" })
         
         alert("Configuration reset successfully!")
       } catch (error) {
@@ -198,6 +207,21 @@ export function SettingsContent({ config, onConfigUpdate }: SettingsContentProps
             {storagePath && (
               <p className="text-sm text-muted-foreground">Current: {storagePath}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="webhook-url">External Webhook URL</Label>
+            <Input
+              id="webhook-url"
+              type="url"
+              placeholder="https://your-webhook-url.com/endpoint"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              className="font-mono text-sm"
+            />
+            <p className="text-sm text-muted-foreground">
+              URL for external webhook integration
+            </p>
           </div>
 
           <div className="flex gap-2">

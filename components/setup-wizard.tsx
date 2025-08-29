@@ -8,12 +8,13 @@ import { Label } from "@/components/ui/label"
 import { FolderOpen, FileSpreadsheet, Settings } from "lucide-react"
 
 interface SetupWizardProps {
-  onComplete: (config: { excelPath: string; storagePath: string }) => void
+  onComplete: (config: { excelPath: string; storagePath: string; webhookUrl: string }) => void
 }
 
 export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [excelPath, setExcelPath] = useState("")
   const [storagePath, setStoragePath] = useState("")
+  const [webhookUrl, setWebhookUrl] = useState("https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email")
   const [hideWizard, setHideWizard] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -32,13 +33,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           const locations = await (window as any).electronAPI.getLocations()
           const hasFile = locations.some((loc: any) => loc.type === 'file')
           const hasFolder = locations.some((loc: any) => loc.type === 'folder')
-          if (hasFile && hasFolder) setHideWizard(true)
+          const hasWebhook = locations.some((loc: any) => loc.type === 'webhook')
+          if (hasFile && hasFolder && hasWebhook) setHideWizard(true)
         } else {
           // Check localStorage as fallback
           const savedConfig = localStorage.getItem("gstr2bConfig")
           if (savedConfig) {
             const config = JSON.parse(savedConfig)
-            if (config.excelPath && config.storagePath) {
+            if (config.excelPath && config.storagePath && config.webhookUrl) {
               setHideWizard(true)
             }
           }
@@ -102,23 +104,24 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
 
   const handleContinue = async () => {
-    if (excelPath && storagePath) {
+    if (excelPath && storagePath && webhookUrl) {
       try {
         // Check if we're in Electron
         if (typeof window !== 'undefined' && (window as any).electronAPI) {
           // Use Electron storage
           await (window as any).electronAPI.saveLocation({ path: excelPath, type: 'file' })
           await (window as any).electronAPI.saveLocation({ path: storagePath, type: 'folder' })
+          await (window as any).electronAPI.saveLocation({ path: webhookUrl, type: 'webhook' })
         }
         
         if (mounted && typeof window !== 'undefined') {
-          localStorage.setItem("gstr2bConfig", JSON.stringify({ excelPath, storagePath }))
+          localStorage.setItem("gstr2bConfig", JSON.stringify({ excelPath, storagePath, webhookUrl }))
         }
-        onComplete({ excelPath, storagePath })
+        onComplete({ excelPath, storagePath, webhookUrl })
       } catch (error) {
         console.error('Failed to save locations:', error)
         // Still proceed if there's an error
-        onComplete({ excelPath, storagePath })
+        onComplete({ excelPath, storagePath, webhookUrl })
       }
     }
   }
@@ -174,9 +177,26 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           </div>
 
+          <div className="space-y-3">
+            <Label htmlFor="webhook-url" className="text-sm font-medium">
+              External Webhook URL
+            </Label>
+            <Input
+              id="webhook-url"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="Enter webhook URL for email notifications..."
+              className="font-mono text-sm"
+              type="url"
+            />
+            <p className="text-xs text-muted-foreground">
+              This webhook will receive automation results and send email notifications
+            </p>
+          </div>
+
           <Button
             onClick={handleContinue}
-            disabled={!excelPath || !storagePath}
+            disabled={!excelPath || !storagePath || !webhookUrl}
             className="w-full font-medium"
             size="lg"
           >

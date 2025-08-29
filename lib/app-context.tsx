@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 interface AppConfig {
   excelPath: string
   storagePath: string
+  webhookUrl: string
 }
 
 interface AppContextType {
@@ -16,7 +17,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<AppConfig>({ excelPath: "", storagePath: "" })
+  const [config, setConfig] = useState<AppConfig>({ excelPath: "", storagePath: "", webhookUrl: "" })
   const [isLoading, setIsLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
 
@@ -45,11 +46,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             
             const fileLocation = locations.find((loc: any) => loc.type === 'file')
             const folderLocation = locations.find((loc: any) => loc.type === 'folder')
+            const webhookLocation = locations.find((loc: any) => loc.type === 'webhook')
             
-            if (fileLocation || folderLocation) {
+            if (fileLocation || folderLocation || webhookLocation) {
               const electronConfig = {
                 excelPath: fileLocation?.path || "",
-                storagePath: folderLocation?.path || ""
+                storagePath: folderLocation?.path || "",
+                webhookUrl: webhookLocation?.path || "https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email"
               }
               setConfig(electronConfig)
               localStorage.setItem("gstr2bConfig", JSON.stringify(electronConfig))
@@ -65,11 +68,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 
                 const fileLocation = locations.find((loc: any) => loc.type === 'file')
                 const folderLocation = locations.find((loc: any) => loc.type === 'folder')
+                const webhookLocation = locations.find((loc: any) => loc.type === 'webhook')
                 
-                if (fileLocation || folderLocation) {
+                if (fileLocation || folderLocation || webhookLocation) {
                   const apiConfig = {
                     excelPath: fileLocation?.path || "",
-                    storagePath: folderLocation?.path || ""
+                    storagePath: folderLocation?.path || "",
+                    webhookUrl: webhookLocation?.path || "https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email"
                   }
                   setConfig(apiConfig)
                   localStorage.setItem("gstr2bConfig", JSON.stringify(apiConfig))

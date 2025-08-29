@@ -7,6 +7,26 @@ import { setProcessStopFlag, shouldStopProcessing, setCurrentProcessInfo } from 
 // Force Node.js runtime to avoid fetch errors in Electron/production
 export const runtime = 'nodejs'
 
+// Helper function to get saved webhook URL
+async function getWebhookUrl(): Promise<string> {
+  try {
+    // Try to get from save-location API
+    const response = await fetch('http://localhost:3000/api/save-location')
+    if (response.ok) {
+      const data = await response.json()
+      const webhookLocation = data.locations.find((loc: any) => loc.type === 'webhook')
+      if (webhookLocation?.path) {
+        return webhookLocation.path
+      }
+    }
+  } catch (error) {
+    console.log('Failed to get webhook URL from API, using default')
+  }
+  
+  // Default webhook URL if not found
+  return 'https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email'
+}
+
 // Helper function to save logs to file
 function saveLogToFile(logEntry: any) {
   try {
@@ -101,6 +121,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { year, quarter, month, filePath, fileType } = body
+
+    // Get webhook URL from saved configuration
+    const webhookUrl = await getWebhookUrl()
+    console.log('Using webhook URL:', webhookUrl)
 
     console.log('Processing file:', {
       filePath,
@@ -439,8 +463,8 @@ export async function POST(request: Request) {
         const webhookController = new AbortController()
         const webhookTimeoutId = setTimeout(() => webhookController.abort(), 180000) // 3 minute timeout
         
-        // Send to external n8n webhook
-        const webhookResponse = await fetch('https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email', {
+        // Send to external webhook
+        const webhookResponse = await fetch(webhookUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -458,12 +482,22 @@ export async function POST(request: Request) {
           console.error(`External webhook response status:`, webhookResponse.status)
           console.error(`External webhook response headers:`, Object.fromEntries(webhookResponse.headers.entries()))
           
+          // Determine appropriate error message based on status code
+          let errorMessage = errorText || `HTTP ${webhookResponse.status}`
+          if (webhookResponse.status === 404) {
+            errorMessage = `Webhook endpoint not found (404): ${errorText || 'Endpoint unavailable'}`
+          } else if (webhookResponse.status === 500) {
+            errorMessage = `Webhook server error (500): ${errorText || 'Internal server error'}`
+          } else if (webhookResponse.status === 503) {
+            errorMessage = `Webhook service unavailable (503): ${errorText || 'Service temporarily unavailable'}`
+          }
+          
           // Log webhook error response with more details
           const errorLog = {
             "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
             "status": webhookResponse.status,
-            "message": errorText || `HTTP ${webhookResponse.status}`,
-            "webhook_url": "https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email",
+            "message": errorMessage,
+            "webhook_url": webhookUrl,
             "step": "external_webhook",
             "error_details": {
               "status_code": webhookResponse.status,
@@ -497,15 +531,37 @@ export async function POST(request: Request) {
                 clientName = webhookResult['Client Name']
               }
               
-              // Extract meaningful message from webhook response
-              if (webhookResult.message) {
-                logMessage = `External webhook: ${webhookResult.message}`
+              // Extract meaningful message from webhook response - prefer email info over generic webhook message
+              if (webhookResult.email_sent === true || webhookResult.message?.toLowerCase().includes('email')) {
+                logMessage = `Email: ${webhookResult.message || 'Email sent successfully'}`
+              } else if (webhookResult.message) {
+                // Check if message contains meaningful info, avoid showing generic "External webhook:" prefix
+                const message = webhookResult.message
+                if (message.toLowerCase().includes('email') || message.toLowerCase().includes('sent') || message.toLowerCase().includes('delivered')) {
+                  logMessage = `Email: ${message}`
+                } else if (webhookResult.status === 200 || webhookResult.status === "200") {
+                  // For successful webhook responses (200 status), assume it's email-related since this is an email webhook
+                  logMessage = `Email: ${message}`
+                } else {
+                  logMessage = message
+                }
+              } else if (webhookResult.status === 200 || webhookResult.status === "200") {
+                // Success response without message
+                logMessage = "Email: Successfully processed"
               }
               
             } catch (parseError) {
               console.log(`External webhook response for row ${i} is not JSON, treating as plain text`)
               webhookResult = { message: responseText }
-              logMessage = `External webhook: ${responseText}`
+              // For plain text responses, check if they contain email-related keywords
+              if (responseText.toLowerCase().includes('email') || responseText.toLowerCase().includes('sent') || responseText.toLowerCase().includes('delivered')) {
+                logMessage = `Email: ${responseText}`
+              } else if (webhookResponse.ok) {
+                // For successful webhook responses (2xx status), assume it's email-related since this is an email webhook
+                logMessage = `Email: ${responseText || 'Successfully processed'}`
+              } else {
+                logMessage = responseText || "Success - Processed through local automation and external webhook"
+              }
             }
             
             // Log successful processing
@@ -529,7 +585,7 @@ export async function POST(request: Request) {
               "Client Name": rowObject['Client Name'] || rowObject['client_name'] || `Row ${i}`,
               "status": webhookResponse.status,
               "message": `Success - External webhook response processing error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-              "webhook_url": "https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email",
+              "webhook_url": webhookUrl,
               "automation_data": automationResult
             }
             saveLogToFile(basicSuccessLog)
@@ -550,7 +606,7 @@ export async function POST(request: Request) {
           errorUrl = 'http://localhost:3001/api/gstr2b-automation'
         } else if (errorMessage.includes('webhook') || errorMessage.includes('n8nautonerve')) {
           failedStep = 'external_webhook'
-          errorUrl = 'https://n8nautonerve-fjdudrhtahe3bje7.southeastasia-01.azurewebsites.net/webhook-test/gstr2b-email'
+          errorUrl = webhookUrl
         }
         
         // Categorize error types
@@ -594,8 +650,10 @@ export async function POST(request: Request) {
           if (failedStep === 'local_automation') {
             errors.push(`Row ${i}: Cannot connect to local automation server (http://localhost:3001)`)
           } else {
-            errors.push(`Row ${i}: Cannot connect to external webhook server`)
+            errors.push(`Row ${i}: Cannot connect to external webhook server - Service may be unavailable`)
           }
+        } else if (failedStep === 'external_webhook' && errorMessage.includes('404')) {
+          errors.push(`Row ${i}: Webhook endpoint not found (404) - Service configuration issue`)
         } else {
           errors.push(`Row ${i}: ${errorMessage}`)
         }
